@@ -1,0 +1,26 @@
+from __future__ import annotations
+
+import typing as t
+
+import annotated_types as ant
+import pydantic as p
+
+from .base import BaseSettings
+
+
+class WebSettings(BaseSettings):
+{% for app in web_apps %}
+    {{ app.module_name }}: {{ app.class_prefix }}WebSettings
+{% endfor %}
+
+
+class ServeSettings(BaseSettings):
+    host: p.IPvAnyAddress
+    port: t.Annotated[int, ant.Gt(0), ant.Le(65535)]
+{% for app in web_apps %}
+
+
+class {{ app.class_prefix }}WebSettings(BaseSettings):
+    backend: ServeSettings
+    frontend: ServeSettings | None = None
+{% endfor %}

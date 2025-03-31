@@ -1,0 +1,52 @@
+project_name:
+  type: str
+  help: Project name
+
+module_name:
+  type: str
+  help: Python module name
+
+class_prefix:
+  type: str
+  help: Class prefix for project-related concepts
+
+postgresql_port:
+  type: int
+  help: PostgreSQL server port
+  default: 5432
+
+memcached_port:
+  type: int
+  help: Memcached server port
+  default: 11211
+
+process_compose_port:
+  type: int
+  help: Process Compose HTTP server port
+  default: 8080
+
+rabbitmq_port:
+  type: int
+  help: RabbitMQ server port
+  default: 5632
+
+web_apps:
+  type: yaml
+  multiselect: true
+  choices:
+    example-app:
+      value: &example-app
+        name: Example
+        module_name: example
+        class_prefix: Example
+        backend_port: 8081
+        frontend_port: 9091
+
+models:
+  type: yaml
+  multiselect: true
+  choices:
+    example-model:
+      value: &example-model
+        class_name: Example
+        table_name: example

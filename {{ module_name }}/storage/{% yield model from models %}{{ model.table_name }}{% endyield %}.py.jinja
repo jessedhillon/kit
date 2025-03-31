@@ -1,0 +1,42 @@
+from __future__ import annotations
+
+import typing as t
+
+import pydantic as p
+from sqlalchemy import insert, select
+
+from {{ module_name }}.model import {{ model.class_name }}, {{ model.class_name }}ID
+from {{ module_name }}.core import di
+
+from .table import {{ model.table_name }}
+from . import Session
+
+
+def get(key: {{ model.class_name }}ID, session: Session = di.Provide["storage.persistent.session"]) -> {{ model.class_name }} | None:
+    stmt = select({{ model.table_name }}.__table__).where({{ model.table_name }}.{{ model.table_name }}_id == key)
+    row = session.execute(stmt).mappings().one_or_none()
+    return {{ model.class_name }}(**row) if row else None
+
+
+def find(..., session: Session = di.Provide["storage.persistent.session"]) -> tuple[{{ model.class_name }}, ...]:
+    ...
+
+
+def create(..., session: Session = di.Provide["storage.persistent.session"]) -> {{ model.class_name }}:
+    ...
+
+
+def create_many(*params: {{ model.class_name }}CreateParams, session: Session = di.Provide["storage.persistent.session"]) -> {{ model.class_name }}:
+    ...
+
+
+def update(..., session: Session = di.Provide["storage.persistent.session"]):
+    ...
+
+
+def delete(key: {{ model.class_name }}ID, session: Session = di.Provide["storage.persistent.session"]):
+    ...
+
+
+class {{ model.class_name }}CreateParams(t.TypedDict):
+    {{ model.table_name }}_key: {{ model.class_name }}ID

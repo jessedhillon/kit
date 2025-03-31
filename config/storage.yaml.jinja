@@ -1,0 +1,6 @@
+persistent:
+  postgresql:
+    database: {{ module_name }}
+    port: {{ postgresql_port }}
+# ephemeral: "memcached://localhost:{{ memcached_port }}"
+# messaging: "amqp://localhost:{{ rabbitmq_port }}"

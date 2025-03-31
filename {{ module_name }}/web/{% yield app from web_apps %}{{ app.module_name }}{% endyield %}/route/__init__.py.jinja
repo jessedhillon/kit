@@ -1,0 +1,10 @@
+__all__ = [
+    "router",
+]
+
+from fastapi import APIRouter
+
+from . import {{ app.module_name }}
+
+router = APIRouter()
+router.include_router({{ app.module_name }}.router)

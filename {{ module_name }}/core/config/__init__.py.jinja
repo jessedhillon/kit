@@ -1,0 +1,14 @@
+__all__ = [
+{% for app in web_apps %}    "{{ app.class_prefix }}WebSettings",
+{% endfor %}
+    "LoggingSettings",
+    "Secrets",
+    "Settings",
+    "WebSettings",
+]
+
+
+from .logging import LoggingSettings
+from .secrets import Secrets
+from .settings import Settings
+from .web import {% for app in web_apps %}{{ app.class_prefix }}WebSettings, {% endfor %}WebSettings

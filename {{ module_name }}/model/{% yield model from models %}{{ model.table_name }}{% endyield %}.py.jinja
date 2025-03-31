@@ -1,0 +1,6 @@
+from .base import BaseModel
+from .id import {{ model.class_name }}ID
+
+
+class {{ model.class_name }}(BaseModel):
+    {{ model.table_name }}_id: {{ model.class_name }}ID

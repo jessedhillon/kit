@@ -1,0 +1,9 @@
+{% for app in web_apps -%}
+{{ app.module_name }}:
+  backend:
+    host: 127.0.0.1
+    port: {{ app.backend_port }}
+  frontend:
+    host: 127.0.0.1
+    port: {{ app.frontend_port }}
+{% endfor %}

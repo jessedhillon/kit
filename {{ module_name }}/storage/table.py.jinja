@@ -1,0 +1,30 @@
+import enum
+
+from sqlalchemy import MetaData
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, MappedAsDataclass
+from sqlalchemy.dialects.postgresql import ARRAY
+from sqlalchemy.types import String
+
+from {{ module_name }}.model import {% for model in models %}{{ model.class_name }}ID{{ '' if loop.last else ',' }}{% endfor %}
+
+from .type import ShortUUIDKeyType, ValueEnumMapper
+
+metadata = MetaData()
+
+
+class base(MappedAsDataclass, DeclarativeBase):
+    type_annotation_map = {
+{%- for model in models %}
+        {{ model.class_name }}ID: ShortUUIDKeyType({{ model.class_name }}ID),
+{%- endfor %}
+        list[str]: ARRAY(String),
+        enum.Enum: ValueEnumMapper,
+    }
+
+
+{% for model in models -%}
+class {{ model.table_name }}(base):
+    __tablename__ = "{{ model.table_name }}"
+
+    {{ model.table_name }}_id: Mapped[{{ model.class_name}}ID] = mapped_column(primary_key=True)
+{%- endfor %}

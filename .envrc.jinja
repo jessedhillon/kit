@@ -1,0 +1,48 @@
+# vi: ft=sh
+# shellcheck disable=all
+#
+# Load parent .envrc if available
+source_up_if_exists
+
+# Load environment variables from .env if it is present
+dotenv_if_exists
+
+export XDG_STATE_HOME="$PWD/.state"
+export PGDATA="$XDG_STATE_HOME/postgresql"
+export PGHOST=$XDG_STATE_HOME
+
+export RABBITMQ_NODENAME="rabbit@localhost"
+export RABBITMQ_NODE_PORT={{ rabbitmq_port }}
+export RABBITMQ_HOME="$XDG_STATE_HOME/$RABBITMQ_NODENAME"
+export RABBITMQ_MNESIA_BASE="$RABBITMQ_HOME/mnesia"
+export RABBITMQ_LOGS="$RABBITMQ_HOME/logs"
+export RABBITMQ_PID_FILE="$XDG_STATE_HOME/$RABBITMQ_NODENAME.pid"
+
+if [ ! -d "$RABBITMQ_HOME" ]; then
+  mkdir -p "$RABBITMQ_HOME"
+fi
+
+if [ ! -d "$RABBITMQ_MNESIA_BASE" ]; then
+  mkdir -p "$RABBITMQ_MNESIA_BASE"
+fi
+
+if [ ! -d "$(dirname "$RABBITMQ_LOGS")" ]; then
+  mkdir -p "$(dirname "$RABBITMQ_LOGS")"
+fi
+
+# Load Nix Flake integration https://github.com/nix-community/nix-direnv
+use flake
+
+# Watch for any changes to any nix files
+watch_file $(fd -tf -enix)
+
+if [[ -f "${PWD}/.venv/bin/activate" ]]; then
+  source "${PWD}/.venv/bin/activate"
+fi
+
+if [[ -f "${PWD}/.envrc.local" ]]; then
+  source "${PWD}/.envrc.local"
+fi
+
+export PYTHONBREAKPOINT=jdbpp.set_trace
+export PYTHON_BASIC_REPL=1

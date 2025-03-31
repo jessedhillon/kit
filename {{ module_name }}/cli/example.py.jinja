@@ -1,0 +1,13 @@
+import {{ module_name }}.lib.cli as click
+from {{ module_name }}.core import di
+from {{ module_name }}.model import DeploymentEnvironment
+
+
+@click.group("example")
+def example(): ...
+
+
+@example.command()
+@di.inject
+def hello(env: DeploymentEnvironment = di.Provide["env"]):
+  click.echo(f"hello from {env.name}")
