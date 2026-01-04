@@ -1,0 +1,95 @@
+{
+  description = "{{ project_name }}";
+
+  inputs = {
+    devshell = {
+      url = "github:numtide/devshell";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+    nixpkgs.url = "nixpkgs";
+    treefmt-nix = {
+      url = "github:numtide/treefmt-nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+  };
+
+  outputs =
+    {
+      nixpkgs,
+      treefmt-nix,
+      ...
+    }@inputs:
+    let
+      system = "x86_64-linux";
+      pkgs = import nixpkgs {
+        inherit system;
+        config.allowUnfree = true;
+        overlays = [ inputs.devshell.overlays.default ];
+      };
+      treefmtEval = treefmt-nix.lib.evalModule pkgs ./treefmt.nix;
+    in
+    {
+      formatter.${system} = treefmtEval.config.build.wrapper;
+      checks.${system}.formatting = treefmtEval.config.build.check inputs.self;
+
+      devShells.${system}.default = pkgs.devshell.mkShell {
+        name = "{{ module_name }}";
+        motd = "{32}{{ project_name }} activated{reset}\n$(type -p menu &>/dev/null && menu)\n";
+
+        packages = with pkgs; [
+          claude-code
+          gh
+          poetry
+          pre-commit
+          process-compose
+          python313
+          nodejs
+        ];
+
+        commands = [
+          {
+            name = "install-hooks";
+            command = ''
+              if [[ -f ".pre-commit-config.yaml" ]]; then
+                pushd $PRJ_ROOT
+                pre-commit install --overwrite --install-hooks
+                popd
+              fi
+            '';
+            help = "install or update pre-commit hooks";
+          }
+          {
+            name = "generate-api-clients";
+            command = ''
+              set -euo pipefail
+              echo "Starting API server..."
+              poetry run python -m {{ module_name }}.cli web serve &
+              SERVER_PID=$!
+              sleep 3
+
+              cleanup() {
+                echo "Stopping API server..."
+                kill $SERVER_PID 2>/dev/null || true
+              }
+              trap cleanup EXIT
+
+              {% for app in web_apps %}
+              echo "Generating API client for {{ app.name }}..."
+              pushd $PRJ_ROOT/{{ module_name }}/web/{{ app.module_name }}/frontend > /dev/null
+              npx openapi-ts
+              popd > /dev/null
+              {% endfor %}
+
+              echo "API clients generated successfully"
+            '';
+            help = "generate TypeScript API clients from OpenAPI specs";
+          }
+          {
+            name = "dev";
+            command = "process-compose up";
+            help = "start development services";
+          }
+        ];
+      };
+    };
+}

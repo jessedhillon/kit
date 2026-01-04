@@ -1,0 +1,16 @@
+{
+  projectRootFile = "flake.nix";
+  programs = {
+    nixfmt.enable = true;
+    ruff-check = {
+      enable = true;
+      # Exclude type stubs which often have long lines
+      excludes = [ "*/typings/*" ];
+    };
+    ruff-format = {
+      enable = true;
+      excludes = [ "*/typings/*" ];
+    };
+    prettier.enable = true;
+  };
+}

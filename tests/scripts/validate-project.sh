@@ -53,14 +53,54 @@ else
 fi
 
 # Frontend validation (for each web app)
+# First, install npm dependencies for all frontends
 for frontend_dir in */web/*/frontend; do
     if [[ -d "$frontend_dir" ]]; then
         echo ""
-        echo "=== Frontend Validation: $frontend_dir ==="
+        echo "=== Frontend Setup: $frontend_dir ==="
+        pushd "$frontend_dir" > /dev/null
+        run_step "npm install ($frontend_dir)" npm install
+        popd > /dev/null
+    fi
+done
+
+# Generate API clients (requires running API server)
+# Find the module name from the directory structure
+MODULE_NAME=$(ls -d */ 2>/dev/null | grep -v tests | grep -v migrations | grep -v config | head -1 | tr -d '/')
+if [[ -n "$MODULE_NAME" ]] && compgen -G "$MODULE_NAME/web/*/frontend" > /dev/null 2>&1; then
+    echo ""
+    echo "=== API Client Generation ==="
+    echo "Starting API server..."
+
+    # Start the API server in background
+    poetry run python -m "$MODULE_NAME.cli" web serve &
+    SERVER_PID=$!
+
+    # Wait for server to start
+    sleep 3
+
+    # Generate clients for each frontend
+    for frontend_dir in "$MODULE_NAME"/web/*/frontend; do
+        if [[ -d "$frontend_dir" ]]; then
+            pushd "$frontend_dir" > /dev/null
+            run_step "generate-api-client ($frontend_dir)" npx openapi-ts
+            popd > /dev/null
+        fi
+    done
+
+    # Stop the server
+    echo "Stopping API server..."
+    kill $SERVER_PID 2>/dev/null || true
+    wait $SERVER_PID 2>/dev/null || true
+fi
+
+# Build and lint frontends
+for frontend_dir in */web/*/frontend; do
+    if [[ -d "$frontend_dir" ]]; then
+        echo ""
+        echo "=== Frontend Build: $frontend_dir ==="
 
         pushd "$frontend_dir" > /dev/null
-
-        run_step "npm install ($frontend_dir)" npm install
 
         run_step "npm run build ($frontend_dir)" npm run build
 

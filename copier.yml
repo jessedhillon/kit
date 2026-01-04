@@ -1,3 +1,9 @@
+_exclude:
+  - kit-flake.nix
+  - kit-pre-commit-config.yaml
+  - flake.lock
+  - tests/
+
 project_name:
   type: str
   help: Project name

@@ -12,6 +12,15 @@ repos:
     - id: conventional-msg
       stages: [commit-msg]
 
+  - repo: local
+    hooks:
+    - id: nix-fmt
+      name: nix fmt
+      entry: nix fmt
+      language: system
+      files: \.nix$
+      pass_filenames: false
+
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.9.2
     hooks:

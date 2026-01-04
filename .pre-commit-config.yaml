@@ -1,16 +1,1 @@
-repos:
-- repo: https://github.com/jessedhillon/conventional-msg
-  rev: "0.2.0"
-  hooks:
-  - id: conventional-msg
-    stages: [commit-msg]
-
-- repo: local
-  hooks:
-  - id: validate-templates
-    name: Validate template syntax
-    entry: tests/scripts/validate-templates.sh
-    language: script
-    pass_filenames: false
-    always_run: true
-    stages: [pre-commit]
+kit-pre-commit-config.yaml
