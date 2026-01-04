@@ -86,7 +86,8 @@ reportMissingTypeStubs = false
 
 [tool.ruff]
 exclude = [
-  "{{ module }}/typings/"
+  ".venv",
+  "{{ module_name }}/typings/"
 ]
 line-length = 120
 lint.select = [ "E", "F", "B", "T" ]
@@ -98,7 +99,7 @@ preview = true
 target-version = "py313"
 
 [tool.ruff.lint.per-file-ignores]
-"{{ module }}/model/id.py" = ["E302"]
+"{{ module_name }}/model/id.py" = ["E302"]
 
 [tool.black]
 line-length = 120
