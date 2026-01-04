@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import typing as t
 import pydantic as p
 
 from .base import BaseSettings

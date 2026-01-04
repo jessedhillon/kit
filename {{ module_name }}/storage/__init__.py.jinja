@@ -6,17 +6,17 @@ import types
 from sqlalchemy.orm import Session, SessionTransaction
 
 __all__ = [
-    {% for model in models %}
+{%- for model in models %}
     "{{ model.table_name }}",
-    {% endfor %}
+{%- endfor %}
     "Session",
     "SessionTransaction",
 ]
 
 if t.TYPE_CHECKING:
-    {% for model in models %}
+{%- for model in models %}
     from . import {{ model.table_name }}
-    {% endfor %}
+{%- endfor %}
 
 
 def __getattr__(name: str) -> types.ModuleType:

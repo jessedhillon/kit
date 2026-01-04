@@ -10,4 +10,4 @@ def example(): ...
 @example.command()
 @di.inject
 def hello(env: DeploymentEnvironment = di.Provide["env"]):
-  click.echo(f"hello from {env.name}")
+    click.echo(f"hello from {env.name}")

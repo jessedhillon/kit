@@ -6,17 +6,13 @@ import types
 from sqlalchemy.orm import Session, SessionTransaction
 
 __all__ = [
-    
     "example",
-    
     "Session",
     "SessionTransaction",
 ]
 
 if t.TYPE_CHECKING:
-    
     from . import example
-    
 
 
 def __getattr__(name: str) -> types.ModuleType:

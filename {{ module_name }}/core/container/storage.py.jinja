@@ -13,7 +13,14 @@ import sqlalchemy
 import sqlalchemy.event
 import sqlalchemy.orm
 from dependency_injector.containers import DeclarativeContainer
-from dependency_injector.providers import Configuration, Container, Object, Provider, Resource, Singleton, ThreadLocalSingleton
+from dependency_injector.providers import (
+    Configuration,
+    Container,
+    Object,
+    Provider,
+    Resource,
+    Singleton,
+)
 from psycopg.adapt import Buffer, Loader
 from psycopg.types import TypeInfo
 from psycopg.types.array import register_array

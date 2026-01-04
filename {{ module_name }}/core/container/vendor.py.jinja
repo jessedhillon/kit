@@ -12,9 +12,6 @@ from dependency_injector.providers import Configuration, Container, Provider, Si
 if t.TYPE_CHECKING:
     from googleapiclient._apis.sheets.v4 import SheetsResource  # pyright: ignore [reportMissingModuleSource]
 
-from ..config.secrets import GoogleSecrets
-from ..config.vendor import GoogleSettings
-
 
 class GoogleContainer(DeclarativeContainer):
     @staticmethod

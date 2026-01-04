@@ -2,8 +2,7 @@ from __future__ import annotations
 
 import typing as t
 
-import pydantic as p
-from sqlalchemy import insert, select
+from sqlalchemy import select
 
 from testproject.model import Example, ExampleID
 from testproject.core import di
