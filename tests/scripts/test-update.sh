@@ -5,7 +5,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-TEMPLATE_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+TEMPLATE_ROOT="$REPO_ROOT/templates"
 FIXTURE_DIR="$SCRIPT_DIR/../fixture"
 
 # Parse arguments
@@ -54,9 +55,6 @@ echo "Template: $TEMPLATE_ROOT"
 echo "Fixture:  $FIXTURE_DIR"
 echo ""
 
-# Store current state for potential reset (using parent repo)
-TEMPLATE_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-
 # Update the fixture
 echo "--- Updating fixture ---"
 cd "$FIXTURE_DIR"
@@ -73,7 +71,7 @@ echo "✓ Fixture updated successfully"
 if [[ "$SHOW_DIFF" == "true" ]]; then
     echo ""
     echo "--- Changes from update ---"
-    cd "$TEMPLATE_ROOT"
+    cd "$REPO_ROOT"
     if git diff --quiet -- tests/fixture; then
         echo "(no changes)"
     else
@@ -91,7 +89,7 @@ fi
 if [[ "$RESET_AFTER" == "true" ]]; then
     echo ""
     echo "--- Resetting fixture ---"
-    cd "$TEMPLATE_ROOT"
+    cd "$REPO_ROOT"
     git checkout -- tests/fixture
     git clean -fd tests/fixture
     echo "✓ Fixture reset to pre-update state"
