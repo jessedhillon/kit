@@ -8,11 +8,6 @@ from sqlalchemy.dialects.postgresql import ENUM
 from sqlalchemy.types import Enum as EnumType
 
 
-class ExtendedOperations(Operations):
-    def create_enum_type(self, type_name: str, values: list[str], schema: str | None = None) -> ENUM: ...
-    def drop_enum_type(self, type_name: str, values: list[str] | None = None, schema: str | None = None): ...
-
-
 class EnumValuesType(EnumType):
     """SQLAlchemy's built-in EnumType uses the enum member's name as the bind param, not the value, so we use this"""
 
