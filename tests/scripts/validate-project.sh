@@ -15,6 +15,21 @@ cd "$PROJECT_DIR"
 
 echo "=== Validating project in: $PROJECT_DIR ==="
 
+# Set up local environment to avoid polluting user's home directory
+export XDG_STATE_HOME="$PWD/.state"
+export XDG_CACHE_HOME="$PWD/.cache"
+export POETRY_VIRTUALENVS_IN_PROJECT=true
+export NPM_CONFIG_CACHE="$PWD/.cache/npm"
+
+mkdir -p "$XDG_STATE_HOME" "$XDG_CACHE_HOME" "$NPM_CONFIG_CACHE"
+
+# Create and activate virtualenv if it doesn't exist
+if [[ ! -d ".venv" ]]; then
+    echo "=== Creating virtualenv ==="
+    python -m venv .venv
+fi
+source .venv/bin/activate
+
 # Track failures
 FAILURES=()
 
