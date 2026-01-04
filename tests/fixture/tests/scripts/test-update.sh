@@ -54,15 +54,8 @@ echo "Template: $TEMPLATE_ROOT"
 echo "Fixture:  $FIXTURE_DIR"
 echo ""
 
-# Store current state for potential reset
-ORIGINAL_HEAD=""
-if [[ "$RESET_AFTER" == "true" ]]; then
-    pushd "$FIXTURE_DIR" > /dev/null
-    if git rev-parse --git-dir > /dev/null 2>&1; then
-        ORIGINAL_HEAD="$(git rev-parse HEAD 2>/dev/null || echo "")"
-    fi
-    popd > /dev/null
-fi
+# Store current state for potential reset (using parent repo)
+TEMPLATE_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # Update the fixture
 echo "--- Updating fixture ---"
@@ -76,32 +69,30 @@ copier update \
 echo ""
 echo "✓ Fixture updated successfully"
 
-# Show what changed
+# Show what changed (from parent repo's perspective)
 if [[ "$SHOW_DIFF" == "true" ]]; then
     echo ""
     echo "--- Changes from update ---"
-    if git rev-parse --git-dir > /dev/null 2>&1; then
-        if git diff --quiet; then
-            echo "(no changes)"
-        else
-            git diff --stat
-            echo ""
-            echo "Run 'git diff' in $FIXTURE_DIR for full details"
-        fi
+    cd "$TEMPLATE_ROOT"
+    if git diff --quiet -- tests/fixture; then
+        echo "(no changes)"
     else
-        echo "(fixture is not a git repository, cannot show diff)"
+        git diff --stat -- tests/fixture
+        echo ""
+        echo "Run 'git diff tests/fixture' for full details"
     fi
+    cd "$FIXTURE_DIR"
 fi
 
 # Validate the updated fixture
 "$SCRIPT_DIR/validate-project.sh" "$FIXTURE_DIR"
 
-# Reset if requested
-if [[ "$RESET_AFTER" == "true" && -n "$ORIGINAL_HEAD" ]]; then
+# Reset if requested (restore from parent repo)
+if [[ "$RESET_AFTER" == "true" ]]; then
     echo ""
     echo "--- Resetting fixture ---"
-    cd "$FIXTURE_DIR"
-    git checkout .
-    git clean -fd
+    cd "$TEMPLATE_ROOT"
+    git checkout -- tests/fixture
+    git clean -fd tests/fixture
     echo "✓ Fixture reset to pre-update state"
 fi

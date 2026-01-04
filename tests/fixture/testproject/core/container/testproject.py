@@ -9,7 +9,7 @@ import typing as t
 from pathlib import Path
 
 import pydantic as p
-import xdg
+import xdg_base_dirs as xdg
 from dependency_injector.containers import DeclarativeContainer
 from dependency_injector.providers import Configuration, Container, Object, Provider, Resource, Singleton
 

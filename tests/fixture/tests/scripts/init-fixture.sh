@@ -35,17 +35,6 @@ copier copy \
 echo ""
 echo "✓ Fixture generated successfully"
 
-# Initialize git in fixture for tracking changes
-echo ""
-echo "--- Initializing git repository ---"
-cd "$FIXTURE_DIR"
-git init
-git add -A
-git commit -m "Initial fixture from template"
-
-echo ""
-echo "✓ Git repository initialized"
-
 echo ""
 echo "=== Fixture Ready ==="
 echo ""

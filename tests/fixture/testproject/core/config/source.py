@@ -117,7 +117,7 @@ class YAMLCascadingSettingsSource(SettingsSource):
         # the yamls encountered along the load_paths
         if not isinstance(value, list):
             raise ValueError(field_name)
-        yamls: list[str] = value
+        yamls = t.cast(list[str], value)
         return yaml.safe_load(yamls[-1])
 
 

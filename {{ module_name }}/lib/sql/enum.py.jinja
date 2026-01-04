@@ -11,9 +11,9 @@ from sqlalchemy.types import Enum as EnumType
 class EnumValuesType(EnumType):
     """SQLAlchemy's built-in EnumType uses the enum member's name as the bind param, not the value, so we use this"""
 
-    def __init__(self, *_enums: object, **kwargs: t.Any):
-        kwargs.update(values_callable=self._get_values)
-        super().__init__(*_enums, **kwargs)
+    def __init__(self, enum_class: type[enum.Enum], **kwargs: t.Any):
+        kwargs["values_callable"] = self._get_values
+        super().__init__(enum_class, **kwargs)
 
     @staticmethod
     def _get_values(meta: type[enum.Enum]) -> list[enum.Enum]:

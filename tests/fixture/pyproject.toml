@@ -1,7 +1,12 @@
+[build-system]
+requires = ["poetry-core>=1.0.0", "poetry-dynamic-versioning>=1.0.0,<2.0.0"]
+build-backend = "poetry_dynamic_versioning.backend"
+
 [project]
 name = "testproject"
 description = "..."
 dynamic = [ "version" ]
+requires-python = ">=3.13,<4.0"
 authors = [
     {name = "Jesse Dhillon", email = "jesse@dhillon.com" },
 ]
@@ -22,7 +27,7 @@ dependencies = [
     "types-Pygments==2.19.0.20250107",
     "uuid-utils~=0.10.0",
     "uvicorn~=0.34.0",
-    "xdg~=6.0.0",
+    "xdg-base-dirs~=6.0.0",
 ]
 
 [project.optional-dependencies]
@@ -34,7 +39,9 @@ dev = [
     "google-api-python-client~=2.163.0",
     "google-api-python-client-stubs~=1.29.0",
     "isort~=6.0.0",
+    "pyright~=1.1.0",
     "rpdb@git+ssh://git@github.com/incognita-labs/rpdb.git@v0.2.1",
+    "ruff~=0.11.0",
     "sql_formatter~=0.6.0",
 ]
 
@@ -105,3 +112,14 @@ multi_line_output = 2  # HANGING_INDENT
 skip_glob = [
     "testproject/typings/**/*.pyi"
 ]
+
+[tool.poetry]
+name = "testproject"
+version = "0.0.0"  # placeholder, read from VERSION.txt by poetry-dynamic-versioning
+packages = [{ include = "testproject" }]
+
+[tool.poetry-dynamic-versioning]
+enable = true
+
+[tool.poetry-dynamic-versioning.from-file]
+source = "VERSION.txt"

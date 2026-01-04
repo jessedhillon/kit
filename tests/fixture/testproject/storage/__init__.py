@@ -6,7 +6,9 @@ import types
 from sqlalchemy.orm import Session, SessionTransaction
 
 __all__ = [
-    "institution",
+    
+    "example",
+    
     "Session",
     "SessionTransaction",
 ]

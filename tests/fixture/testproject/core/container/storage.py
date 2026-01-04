@@ -10,6 +10,7 @@ from pathlib import Path
 import alembic.config
 import psycopg
 import sqlalchemy
+import sqlalchemy.event
 import sqlalchemy.orm
 from dependency_injector.containers import DeclarativeContainer
 from dependency_injector.providers import Configuration, Container, Object, Provider, Resource, Singleton, ThreadLocalSingleton
@@ -150,12 +151,12 @@ class UUIDLoader(Loader):
         return uuid.UUID(bytes=bytes(data))
 
 
-def register_uuid(conn: psycopg.connection.Connection, _):
+def register_uuid(conn: psycopg.connection.Connection[t.Any], _: t.Any) -> None:
     uuid_oid, uuid_array_oid = 2950, 2951
     psycopg.adapters.register_loader("uuid", UUIDLoader)
     info = TypeInfo("uuid", uuid_oid, uuid_array_oid)
     register_array(info)
 
 
-def register_path(conn: psycopg.connection.Connection, _):
+def register_path(conn: psycopg.connection.Connection[t.Any], _: t.Any) -> None:
     psycopg.adapters.register_dumper(Path, StrDumper)

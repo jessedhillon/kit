@@ -35,7 +35,7 @@ run_step() {
 echo ""
 echo "=== Python Validation ==="
 
-run_step "poetry install" poetry install --no-interaction
+run_step "poetry install" poetry install --no-interaction --extras dev --extras test
 
 run_step "pyright" poetry run pyright
 
