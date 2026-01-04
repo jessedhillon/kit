@@ -1,0 +1,6 @@
+persistent:
+  postgresql:
+    database: testproject
+    port: 15432
+# ephemeral: "memcached://localhost:11311"
+# messaging: "amqp://localhost:15632"

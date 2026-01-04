@@ -30,13 +30,12 @@
           motd = "{32}${project-name} activated{reset}\n$(type -p menu &>/dev/null && menu)\n";
 
           packages = with pkgs; [
-            bubblewrap
             claude-code
             copier
             gh
             pre-commit
+            python3
             poetry
-            python313
             nodejs
           ];
           commands = [

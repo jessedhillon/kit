@@ -9,12 +9,12 @@ import typing as t
 from pathlib import Path
 
 import pydantic as p
-import xdg_base_dirs as xdg
+import xdg
 from dependency_injector.containers import DeclarativeContainer
 from dependency_injector.providers import Configuration, Container, Object, Provider, Resource, Singleton
 
-import {{ module_name }}
-from {{ module_name }}.model import BaseModel, DeploymentEnvironment
+import testproject
+from testproject.model import BaseModel, DeploymentEnvironment
 
 from ..config import Secrets, Settings
 from ..di import NotReady, register_loader_containers
@@ -35,7 +35,7 @@ def provide_xdg_runtime() -> t.Generator[Path]:
 
 
 def provide_xdg_state() -> Path:
-    stp = xdg.xdg_state_home() / "{{ module_name }}"
+    stp = xdg.xdg_state_home() / "testproject"
     if stp.exists() and stp.is_dir():
         return stp
     stp.mkdir(exist_ok=True)
@@ -50,7 +50,7 @@ class BootConfiguration(BaseModel):
     override: tuple[str, ...]
 
 
-class {{ class_prefix }}Container(DeclarativeContainer):
+class TestContainer(DeclarativeContainer):
     config: Configuration = Configuration()
     secrets: Configuration = Configuration()
 
@@ -73,7 +73,7 @@ class {{ class_prefix }}Container(DeclarativeContainer):
 
     @staticmethod
     def boot(
-        ct: {{ class_prefix }}Container,
+        ct: TestContainer,
         /,
         debug: bool,
         env: DeploymentEnvironment,
@@ -90,15 +90,15 @@ class {{ class_prefix }}Container(DeclarativeContainer):
             # TODO: (2025-02-18) review this list to see if this is truly the
             #                    minimal base wiring set
             packages=[
-                "{{ module_name }}",
-                "{{ module_name }}.lib",
+                "testproject",
+                "testproject.lib",
             ]
         )
         if wiring:
             ct.wire(modules=wiring)
-        if imported := [mod for name, mod in sys.modules.items() if name.startswith("{{ module_name }}.")]:
+        if imported := [mod for name, mod in sys.modules.items() if name.startswith("testproject.")]:
             ct.wire(modules=imported)
-        register_loader_containers(ct, packages=["{{ module_name }}"])
+        register_loader_containers(ct, packages=["testproject"])
 
         logger = ct.logging().get_logger()
 
@@ -114,7 +114,7 @@ class {{ class_prefix }}Container(DeclarativeContainer):
 
         ct.debug.override(debug)
         ct.env.override(env)
-        ct.root.override(Path(os.path.dirname({{ module_name }}.__file__)).parent)
+        ct.root.override(Path(os.path.dirname(testproject.__file__)).parent)
         if debug:
             ct.logging().capture_warnings(True)
 

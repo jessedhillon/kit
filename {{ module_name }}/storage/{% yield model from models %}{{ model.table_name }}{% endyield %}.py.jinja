@@ -18,20 +18,20 @@ def get(key: {{ model.class_name }}ID, session: Session = di.Provide["storage.pe
     return {{ model.class_name }}(**row) if row else None
 
 
-def find(..., session: Session = di.Provide["storage.persistent.session"]) -> tuple[{{ model.class_name }}, ...]:
-    ...
+def find(*, session: Session = di.Provide["storage.persistent.session"]) -> tuple[{{ model.class_name }}, ...]:
+    raise NotImplementedError
 
 
-def create(..., session: Session = di.Provide["storage.persistent.session"]) -> {{ model.class_name }}:
-    ...
+def create(*, session: Session = di.Provide["storage.persistent.session"]) -> {{ model.class_name }}:
+    raise NotImplementedError
 
 
 def create_many(*params: {{ model.class_name }}CreateParams, session: Session = di.Provide["storage.persistent.session"]) -> {{ model.class_name }}:
-    ...
+    raise NotImplementedError
 
 
-def update(..., session: Session = di.Provide["storage.persistent.session"]):
-    ...
+def update(*, session: Session = di.Provide["storage.persistent.session"]) -> None:
+    raise NotImplementedError
 
 
 def delete(key: {{ model.class_name }}ID, session: Session = di.Provide["storage.persistent.session"]):

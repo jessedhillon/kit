@@ -1,0 +1,18 @@
+_commit: d839add
+_src_path: /home/jesse/src/github.com/jessedhillon/kit
+class_prefix: Test
+memcached_port: 11311
+models:
+-   class_name: Example
+    table_name: example
+module_name: testproject
+postgresql_port: 15432
+process_compose_port: 18080
+project_name: testproject
+rabbitmq_port: 15632
+web_apps:
+-   backend_port: 8081
+    class_prefix: Example
+    frontend_port: 9091
+    module_name: example
+    name: Example

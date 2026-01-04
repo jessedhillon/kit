@@ -1,12 +1,7 @@
-[build-system]
-requires = ["poetry-core>=1.0.0", "poetry-dynamic-versioning>=1.0.0,<2.0.0"]
-build-backend = "poetry_dynamic_versioning.backend"
-
 [project]
-name = "{{ project_name }}"
+name = "testproject"
 description = "..."
 dynamic = [ "version" ]
-requires-python = ">=3.13,<4.0"
 authors = [
     {name = "Jesse Dhillon", email = "jesse@dhillon.com" },
 ]
@@ -27,7 +22,7 @@ dependencies = [
     "types-Pygments==2.19.0.20250107",
     "uuid-utils~=0.10.0",
     "uvicorn~=0.34.0",
-    "xdg-base-dirs~=6.0.0",
+    "xdg~=6.0.0",
 ]
 
 [project.optional-dependencies]
@@ -39,20 +34,18 @@ dev = [
     "google-api-python-client~=2.163.0",
     "google-api-python-client-stubs~=1.29.0",
     "isort~=6.0.0",
-    "pyright~=1.1.0",
     "rpdb@git+ssh://git@github.com/incognita-labs/rpdb.git@v0.2.1",
-    "ruff~=0.11.0",
     "sql_formatter~=0.6.0",
 ]
 
 [project.scripts]
-{{ module_name }}-cli = "{{ module_name }}.cli.__main__:execute_command"
+testproject-cli = "testproject.cli.__main__:execute_command"
 
 [tool.setuptools]
-packages = [ "{{ module_name }}" ]
+packages = [ "testproject" ]
 
 [tool.setuptools.dynamic]
-version.attr = "{{ module_name }}.__version__"
+version.attr = "testproject.__version__"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -64,14 +57,14 @@ filterwarnings = [
 
 [tool.pyright]
 exclude = [
-  "{{ module_name }}/typings/",
+  "testproject/typings/",
   "**/node_modules/**",
   "**/.venv/**",
 ]
 venvPath = "."
 venv = ".venv"
 typeCheckingMode = "strict"
-stubPath = "{{ module_name }}/typings/"
+stubPath = "testproject/typings/"
 
 reportUnusedImport = false  # let ruff catch this
 reportUnusedVariable = false  # let ruff catch this
@@ -86,7 +79,7 @@ reportMissingTypeStubs = false
 
 [tool.ruff]
 exclude = [
-  "{{ module }}/typings/"
+  "/typings/"
 ]
 line-length = 120
 lint.select = [ "E", "F", "B", "T" ]
@@ -98,28 +91,17 @@ preview = true
 target-version = "py313"
 
 [tool.ruff.lint.per-file-ignores]
-"{{ module }}/model/id.py" = ["E302"]
+"/model/id.py" = ["E302"]
 
 [tool.black]
 line-length = 120
 target-version = ["py313"]
-force-exclude = '{{ module_name }}/typings/*'
+force-exclude = 'testproject/typings/*'
 skip-string-normalization = true
 
 [tool.isort]
 line_length = 120
 multi_line_output = 2  # HANGING_INDENT
 skip_glob = [
-    "{{ module_name }}/typings/**/*.pyi"
+    "testproject/typings/**/*.pyi"
 ]
-
-[tool.poetry]
-name = "{{ project_name }}"
-version = "0.0.0"  # placeholder, read from VERSION.txt by poetry-dynamic-versioning
-packages = [{ include = "{{ module_name }}" }]
-
-[tool.poetry-dynamic-versioning]
-enable = true
-
-[tool.poetry-dynamic-versioning.from-file]
-source = "VERSION.txt"
