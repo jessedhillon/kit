@@ -3,8 +3,15 @@ default_language_version:
 
 default_install_hook_types:
   - pre-commit
+  - commit-msg
 
 repos:
+  - repo: https://github.com/jessedhillon/conventional-msg
+    rev: "0.2.0"
+    hooks:
+    - id: conventional-msg
+      stages: [commit-msg]
+
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.9.2
     hooks:
