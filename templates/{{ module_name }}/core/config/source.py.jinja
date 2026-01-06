@@ -139,8 +139,13 @@ class AnsibleVaultSecretsSource(SettingsSource):
         current_state = t.cast(CurrentState, self.current_state)
         env = current_state["env"]
         fn = "secrets.vault.yaml"
-        key_name = f"{env.value}:{fn}"
+        vp = self.load_path / fn
 
+        # Early return if no vault file - avoid prompting for password
+        if not vp.exists():
+            return {}
+
+        key_name = f"{env.value}:{fn}"
         try:
             store_key: bool = False
             k = keyctl.search(key_name)
@@ -152,9 +157,6 @@ class AnsibleVaultSecretsSource(SettingsSource):
 
         # INFO: None is the vault-id -- if we start using a vault ID, we need to specify it here
         vault = VaultLib(secrets=[(None, VaultSecret(key.encode()))])
-        vp = self.load_path / fn
-        if not vp.exists():
-            return {}
         with vp.open() as f:
             content = vault.decrypt(f.read())
             if store_key:
