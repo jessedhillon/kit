@@ -32,4 +32,3 @@ class DebugQuery(sqlalchemy.orm.Query[t.Any]):
             fq = self.session.format_query(self)
             return fq.replace("< @", "<@").replace("@ >", "@>")
         return super().__str__()
-

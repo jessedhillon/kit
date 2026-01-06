@@ -33,8 +33,7 @@ def update(*, session: Session = di.Provide["storage.persistent.session"]) -> No
     raise NotImplementedError
 
 
-def delete(key: {{ model.class_name }}ID, session: Session = di.Provide["storage.persistent.session"]):
-    ...
+def delete(key: {{ model.class_name }}ID, session: Session = di.Provide["storage.persistent.session"]): ...
 
 
 class {{ model.class_name }}CreateParams(t.TypedDict):

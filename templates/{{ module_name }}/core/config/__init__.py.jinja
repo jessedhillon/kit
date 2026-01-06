@@ -1,7 +1,6 @@
 __all__ = [
 {% for app in web_apps %}    "{{ app.class_prefix }}WebSettings",
-{% endfor %}
-    "LoggingSettings",
+{% endfor %}    "LoggingSettings",
     "Secrets",
     "Settings",
     "WebSettings",

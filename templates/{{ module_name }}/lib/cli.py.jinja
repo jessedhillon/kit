@@ -121,6 +121,7 @@ class URIParamType(click.ParamType):
         - `file_exists`: (default `True`) if parsing results in `file://` URI,
           enforce that the path referenced exists
     """
+
     file_ok: bool
     dir_ok: bool
     file_exists: bool
@@ -133,10 +134,7 @@ class URIParamType(click.ParamType):
         self.name = "URI OR PATH" if file_ok else "URI"
 
     def convert(
-        self,
-        value: str | pathlib.Path | None,
-        param: click.Parameter | None,
-        ctx: click.Context | None
+        self, value: str | pathlib.Path | None, param: click.Parameter | None, ctx: click.Context | None
     ) -> p.FileUrl | p.AnyUrl | None:
         if value is None:
             return None

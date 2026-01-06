@@ -33,9 +33,6 @@ class ValueEnumMapper(object):
         return tuple(e.value for e in en)
 
     def _resolve_for_python_type(
-        self,
-        python_type: type[t.Any],
-        matched_on: t.Any,
-        matched_on_flattened: t.Any
+        self, python_type: type[t.Any], matched_on: t.Any, matched_on_flattened: t.Any
     ) -> Enum | None:
         return Enum(python_type, values_callable=self.values_callable)

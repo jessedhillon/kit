@@ -58,4 +58,3 @@ for p in Path(__file__).parent.glob("*.py"):
     cmd = make_command(cmd_name)
     script.add_command(cmd, cmd_name)
     _subcommands[cmd_name] = (fn, cmd)
-

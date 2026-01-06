@@ -12,6 +12,7 @@ class GoogleSheetDictReader(object):
     """
     A class that provides a DictReader-like interface for Google Sheets.
     """
+
     _sheets: SheetsResource.SpreadsheetsResource
     _range: str
     _data: None | list[list[str]]
@@ -21,11 +22,13 @@ class GoogleSheetDictReader(object):
     spreadsheet_id: str
     sheet_name: str
 
-    def __init__(self,
-                 spreadsheet_id: str,
-                 sheet_name: str,
-                 fieldnames: list[str] | None = None,
-                 sheet_resource: SheetsResource.SpreadsheetsResource = di.Provide["vendor.google.sheets"]):
+    def __init__(
+        self,
+        spreadsheet_id: str,
+        sheet_name: str,
+        fieldnames: list[str] | None = None,
+        sheet_resource: SheetsResource.SpreadsheetsResource = di.Provide["vendor.google.sheets"],
+    ):
         """
         Initialize the GoogleSheetDictReader.
 
@@ -47,11 +50,8 @@ class GoogleSheetDictReader(object):
     def _get_sheet_data(self) -> list[list[str]]:
         """Fetch all data from the sheet."""
         if self._data is None:
-            result = self.sheet_resource.values().get(
-                spreadsheetId=self.spreadsheet_id,
-                range=self._range
-            ).execute()
-            self._data = result.get('values', [])
+            result = self.sheet_resource.values().get(spreadsheetId=self.spreadsheet_id, range=self._range).execute()
+            self._data = result.get("values", [])
         return self._data
 
     def _get_fieldnames(self) -> list[str]:
@@ -95,6 +95,7 @@ class GoogleSheetDictWriter(object):
     """
     A class that provides a DictWriter-like interface for Google Sheets.
     """
+
     _sheets: SheetsResource.SpreadsheetsResource
     _next_row: int
 
@@ -102,12 +103,14 @@ class GoogleSheetDictWriter(object):
     sheet_name: str
     fieldnames: list[str]
 
-    def __init__(self,
-                 spreadsheet_id: str,
-                 sheet_name: str,
-                 fieldnames: list[str],
-                 write_header: bool = False,
-                 sheets: SheetsResource.SpreadsheetsResource = di.Provide["vendor.google.sheets"]):
+    def __init__(
+        self,
+        spreadsheet_id: str,
+        sheet_name: str,
+        fieldnames: list[str],
+        write_header: bool = False,
+        sheets: SheetsResource.SpreadsheetsResource = di.Provide["vendor.google.sheets"],
+    ):
         """
         Initialize the GoogleSheetDictWriter.
 
@@ -133,12 +136,9 @@ class GoogleSheetDictWriter(object):
         Get the index of the next empty row.
         """
         range_name = f"{self.sheet_name}!A:A"  # Just need the first column
-        result = self._sheets.values().get(
-            spreadsheetId=self.spreadsheet_id,
-            range=range_name
-        ).execute()
+        result = self._sheets.values().get(spreadsheetId=self.spreadsheet_id, range=range_name).execute()
 
-        values = result.get('values', [])
+        values = result.get("values", [])
         return len(values) + 1  # Return the next available row index
 
     @staticmethod
@@ -201,14 +201,9 @@ class GoogleSheetDictWriter(object):
         last_col = len(self.fieldnames) - 1
         range_name = self._get_range_reference(1, 1, 0, last_col)
 
-        body: ValueRange = {
-            "values": [self.fieldnames]
-        }
+        body: ValueRange = {"values": [self.fieldnames]}
         self._sheets.values().update(
-            spreadsheetId=self.spreadsheet_id,
-            range=range_name,
-            valueInputOption='RAW',
-            body=body
+            spreadsheetId=self.spreadsheet_id, range=range_name, valueInputOption="RAW", body=body
         ).execute()
         self._next_row = 2  # Next row is now 2
 
@@ -241,15 +236,10 @@ class GoogleSheetDictWriter(object):
         last_col = len(self.fieldnames) - 1
         start_col, end_col = self._get_column_range(0, last_col)
         range_name = f"{self.sheet_name}!{start_col}{self._next_row}:{end_col}{self._next_row}"
-        body: ValueRange = {
-            'values': [row_values]
-        }
+        body: ValueRange = {"values": [row_values]}
 
         self._sheets.values().update(
-            spreadsheetId=self.spreadsheet_id,
-            range=range_name,
-            valueInputOption='RAW',
-            body=body
+            spreadsheetId=self.spreadsheet_id, range=range_name, valueInputOption="RAW", body=body
         ).execute()
 
     def writerows(self, row_dicts: t.Sequence[dict[str, t.Any]]) -> None:
@@ -278,15 +268,10 @@ class GoogleSheetDictWriter(object):
         last_col = len(self.fieldnames) - 1
         range_name = self._get_range_reference(self._next_row, last_row, 0, last_col)
 
-        body: ValueRange = {
-            'values': all_values
-        }
+        body: ValueRange = {"values": all_values}
 
         self._sheets.values().update(
-            spreadsheetId=self.spreadsheet_id,
-            range=range_name,
-            valueInputOption='RAW',
-            body=body
+            spreadsheetId=self.spreadsheet_id, range=range_name, valueInputOption="RAW", body=body
         ).execute()
 
     def clear(self) -> None:
@@ -296,11 +281,7 @@ class GoogleSheetDictWriter(object):
         # Clear the sheet by specifying the entire sheet range
         range_name = f"{self.sheet_name}"
 
-        self._sheets.values().clear(
-            spreadsheetId=self.spreadsheet_id,
-            range=range_name,
-            body={}
-        ).execute()
+        self._sheets.values().clear(spreadsheetId=self.spreadsheet_id, range=range_name, body={}).execute()
 
         # Reset the next row tracker
         self._next_row = 1

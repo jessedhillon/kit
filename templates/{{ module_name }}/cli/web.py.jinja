@@ -40,8 +40,7 @@ def develop(
     uvi_cf: ServeConfig
     vite_cf: ServeConfig | dict[str, None] = {}
     match app_name:
-        {% for app in web_apps %}
-        case "{{ app.module_name }}":
+{% for app in web_apps %}        case "{{ app.module_name }}":
             cf = web_cf.{{ app.module_name }}
             fe_root = root / "{{ module_name }}/web/{{ app.module_name }}/frontend"
             spec = "{{ module_name }}.web.{{ app.module_name }}:create_app"
@@ -53,8 +52,8 @@ def develop(
                     "host": str(cf.frontend.host),
                     "port": cf.frontend.port,
                 }
-        {% endfor %}
-        case _:
+
+{% endfor %}        case _:
             raise KeyError(f"unknown app: {app_name}")
 
     os.environ["__{{ class_prefix }}_BOOT"] = boot_cf.model_dump_json()
