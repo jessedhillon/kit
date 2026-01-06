@@ -85,13 +85,20 @@ MODULE_NAME=$(ls -d */ 2>/dev/null | grep -v tests | grep -v migrations | grep -
 if [[ -n "$MODULE_NAME" ]] && compgen -G "$MODULE_NAME/web/*/frontend" > /dev/null 2>&1; then
     echo ""
     echo "=== API Client Generation ==="
-    echo "Starting API server..."
 
-    # Start the API server in background
-    poetry run python -m "$MODULE_NAME.cli" web serve &
-    SERVER_PID=$!
+    SERVER_PIDS=()
 
-    # Wait for server to start
+    # Start a server for each web app
+    for app_dir in "$MODULE_NAME"/web/*/; do
+        if [[ -d "$app_dir" ]]; then
+            app_name=$(basename "$app_dir")
+            echo "Starting API server for $app_name..."
+            poetry run python -m "$MODULE_NAME.cli" web serve "$app_name" &
+            SERVER_PIDS+=($!)
+        fi
+    done
+
+    # Wait for servers to start
     sleep 3
 
     # Generate clients for each frontend
@@ -103,10 +110,12 @@ if [[ -n "$MODULE_NAME" ]] && compgen -G "$MODULE_NAME/web/*/frontend" > /dev/nu
         fi
     done
 
-    # Stop the server
-    echo "Stopping API server..."
-    kill $SERVER_PID 2>/dev/null || true
-    wait $SERVER_PID 2>/dev/null || true
+    # Stop all servers
+    echo "Stopping API servers..."
+    for pid in "${SERVER_PIDS[@]}"; do
+        kill "$pid" 2>/dev/null || true
+        wait "$pid" 2>/dev/null || true
+    done
 fi
 
 # Build and lint frontends

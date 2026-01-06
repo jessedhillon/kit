@@ -24,6 +24,32 @@ class ServeConfig(t.TypedDict):
 def web(): ...
 
 
+@web.command(name="serve")
+@click.argument("app_name")
+@click.option("-w", "--workers", type=click.IntRange(min=1), default=1)
+@di.inject
+def serve(
+    app_name: str,
+    workers: int,
+    boot_cf: BootConfiguration = di.Provide["_boot_config"],
+    logging_cf: LoggingSettings = di.Provide["config.logging", di.as_(LoggingSettings)],  # noqa: B008
+    web_cf: WebSettings = di.Provide["config.web", di.as_(WebSettings)],  # noqa: B008
+):
+    """Start a web app backend (no frontend dev server)."""
+    uvi_cf: ServeConfig
+    match app_name:
+{% for app in web_apps %}        case "{{ app.module_name }}":
+            cf = web_cf.{{ app.module_name }}
+            spec = "{{ module_name }}.web.{{ app.module_name }}:create_app"
+            uvi_cf = {"host": str(cf.backend.host), "port": cf.backend.port}
+
+{% endfor %}        case _:
+            raise KeyError(f"unknown app: {app_name}")
+
+    os.environ["__{{ class_prefix }}_BOOT"] = boot_cf.model_dump_json()
+    uvicorn.run(spec, factory=True, workers=workers, log_config=logging_cf.model_dump(), **uvi_cf)
+
+
 @web.command(name="develop")
 @click.argument("app_name")
 @click.option("-w", "--workers", type=click.IntRange(min=1), default=4)
@@ -37,6 +63,7 @@ def develop(
     logging_cf: LoggingSettings = di.Provide["config.logging", di.as_(LoggingSettings)],  # noqa: B008
     web_cf: WebSettings = di.Provide["config.web", di.as_(WebSettings)],  # noqa: B008
 ):
+    """Start a single web app with vite frontend dev server."""
     uvi_cf: ServeConfig
     vite_cf: ServeConfig | dict[str, None] = {}
     match app_name:
