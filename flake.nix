@@ -29,6 +29,13 @@
           name = project-name;
           motd = "{32}${project-name} activated{reset}\n$(type -p menu &>/dev/null && menu)\n";
 
+          env = [
+            {
+              name = "PRE_COMMIT_HOME";
+              eval = "$PRJ_ROOT/.cache/pre-commit";
+            }
+          ];
+
           packages = with pkgs; [
             bubblewrap
             claude-code
