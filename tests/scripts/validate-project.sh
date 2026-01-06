@@ -98,8 +98,15 @@ if [[ -n "$MODULE_NAME" ]] && compgen -G "$MODULE_NAME/web/*/frontend" > /dev/nu
         fi
     done
 
-    # Wait for servers to start
-    sleep 3
+    # Wait for servers to be ready (check openapi.json endpoint)
+    echo "Waiting for API servers to be ready..."
+    for i in {1..30}; do
+        if curl -sf http://localhost:8081/openapi.json > /dev/null 2>&1; then
+            echo "API server ready"
+            break
+        fi
+        sleep 1
+    done
 
     # Generate clients for each frontend
     for frontend_dir in "$MODULE_NAME"/web/*/frontend; do
