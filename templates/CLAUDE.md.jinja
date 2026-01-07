@@ -1,35 +1,24 @@
-# Kit Project Template
+# {{ project_name }}
 
-Kit is a Copier template for generating full-stack Python web applications with FastAPI backends and React/Vite frontends. It provides a production-grade foundation with dependency injection, configuration management, database integration, and modern development tooling.
-
-Throughout this documentation, we use an example project named "myapp" with module name `myapp` and class prefix `MyApp`. The generated CLI would be installed as `myapp-cli`.
+{{ project_description }}
 
 ## Quick Reference
 
-### Commands (in generated projects)
+### Commands
 ```bash
-dev                          # Start all dev services (process-compose)
-generate-api-clients         # Generate TypeScript API clients from OpenAPI
-install-hooks                # Install pre-commit hooks
+dev                              # Start all dev services (process-compose)
+generate-api-clients             # Generate TypeScript API clients from OpenAPI
+install-hooks                    # Install pre-commit hooks
 
-myapp-cli web develop app    # Dev server with live-reload
-myapp-cli web serve app      # Production server
-myapp-cli schema upgrade     # Run database migrations
-```
-
-### Template Commands (in kit repo)
-```bash
-test-fresh               # Test fresh project generation
-test-update              # Test template update path
-validate-templates       # Quick syntax validation
-init-fixture             # Initialize test fixture
+{{ module_name }}-cli web develop <app>   # Dev server with live-reload
+{{ module_name }}-cli web serve <app>     # Production server
+{{ module_name }}-cli schema upgrade      # Run database migrations
 ```
 
 ## Project Structure
 
-### Generated Project Layout
 ```
-myapp/
+{{ module_name }}/
 ├── config/                     # YAML configuration files
 │   ├── env.d/{env}/           # Environment-specific overrides
 │   ├── logging.yaml
@@ -37,9 +26,9 @@ myapp/
 │   ├── web.yaml
 │   └── vendor.yaml
 ├── migrations/                 # Alembic database migrations
-├── myapp/
+├── {{ module_name }}/
 │   ├── cli/                   # Click CLI commands
-│   │   ├── __main__.py       # Entry point (myapp-cli)
+│   │   ├── __main__.py       # Entry point ({{ module_name }}-cli)
 │   │   ├── web.py            # Web server commands
 │   │   └── schema.py         # Database schema commands
 │   ├── core/                  # Framework core
@@ -56,11 +45,11 @@ myapp/
 │   ├── model/                 # Pydantic models
 │   │   ├── base.py           # BaseModel, timestamps
 │   │   ├── id.py             # ShortUUIDKey types
-│   │   └── {model}.py        # Domain models
+│   │   └── {entity}.py       # Domain models
 │   ├── storage/               # Database layer
 │   │   ├── table.py          # SQLAlchemy table definitions
 │   │   ├── type.py           # Custom column types
-│   │   └── {model}.py        # Repository classes
+│   │   └── {entity}.py       # Repository functions
 │   ├── typings/               # Type stubs for untyped deps
 │   └── web/{app}/             # Web applications
 │       ├── main.py           # FastAPI app factory
@@ -79,7 +68,7 @@ myapp/
 The project uses `dependency-injector` with custom extensions in `core/di.py`:
 
 ```python
-from myapp.core import di
+from {{ module_name }}.core import di
 
 @di.inject
 def handler(
@@ -101,7 +90,7 @@ The configuration system uses Pydantic Settings with custom sources to load type
 
 **Core Concepts:**
 
-1. **Field-to-file mapping** - Each field on the root `Settings` class corresponds to a YAML file. The field name determines the filename:
+1. **Field-to-file mapping** - Each field on the root `Settings` class corresponds to a YAML file:
 
 ```python
 # core/config/settings.py
@@ -138,110 +127,37 @@ config/
 
 For `DeploymentEnvironment.Local`, only base config is loaded. For other environments, the env-specific file takes precedence if it exists.
 
-**Settings Classes:**
-
-Each YAML file maps to a typed Pydantic model:
-
-```yaml
-# config/web.yaml
-admin:
-  backend:
-    host: 127.0.0.1
-    port: 8081
-  frontend:
-    host: 127.0.0.1
-    port: 5173
-```
-
-```python
-# core/config/web.py
-class ServeSettings(BaseSettings):
-    host: IPvAnyAddress
-    port: Annotated[int, Gt(0), Le(65535)]
-
-class AdminWebSettings(BaseSettings):
-    backend: ServeSettings
-    frontend: ServeSettings | None = None
-
-class WebSettings(BaseSettings):
-    admin: AdminWebSettings
-```
-
 **CLI Overrides:**
 
 Override any nested config value via dot-notation:
 
 ```bash
-myapp-cli -o storage.postgresql.port=5433 schema upgrade
-myapp-cli -o "web.admin.backend.host=0.0.0.0" web serve admin
-myapp-cli -o debug=true -o storage.postgresql.database=test cmd
+{{ module_name }}-cli -o storage.postgresql.port=5433 schema upgrade
+{{ module_name }}-cli -o "web.example.backend.host=0.0.0.0" web serve example
+{{ module_name }}-cli -o debug=true -o storage.postgresql.database=test cmd
 ```
 
 Values are parsed as YAML, so `true`/`false`, numbers, and quoted strings work as expected.
 
 **Secrets (Ansible Vault):**
 
-Secrets are handled separately via `Secrets` class with `AnsibleVaultSecretsSource`:
+Secrets are handled separately via `Secrets` class with `AnsibleVaultSecretsSource`. The vault password is prompted once and cached in the kernel keyring via `keyctl` for the session.
 
-```python
-# core/config/secrets.py
-class PostgresqlSecrets(BaseSecrets):
-    username: Secret[str] | None = None
-    password: Secret[str] | None = None
+```bash
+# Create vault file
+ansible-vault create config/secrets.vault.yaml
 
-class Secrets(BaseSecrets):
-    root: AnyUrl
-    env: DeploymentEnvironment
-    postgresql: PostgresqlSecrets
+# Edit vault
+ansible-vault edit config/secrets.vault.yaml
 ```
-
-```yaml
-# config/secrets.vault.yaml (encrypted with ansible-vault)
-postgresql:
-  username: app_user
-  password: supersecret
-```
-
-The vault password is prompted once and cached in the kernel keyring via `keyctl` for the session.
-
-**Adding New Configuration:**
-
-1. Create a settings class in `core/config/`:
-```python
-# core/config/cache.py
-class CacheSettings(BaseSettings):
-    host: str = "localhost"
-    port: int = 11211
-    ttl: int = 3600
-```
-
-2. Add the field to `Settings`:
-```python
-# core/config/settings.py
-from .cache import CacheSettings
-
-class Settings(BaseSettings):
-    # ... existing fields
-    cache: CacheSettings = SettingsField
-```
-
-3. Create the YAML file:
-```yaml
-# config/cache.yaml
-host: localhost
-port: 11211
-ttl: 3600
-```
-
-4. Export from `__init__.py` if needed externally.
 
 **Accessing Configuration:**
 
 Via dependency injection:
 
 ```python
-from myapp.core import di
-from myapp.core.config import StorageSettings
+from {{ module_name }}.core import di
+from {{ module_name }}.core.config import StorageSettings
 
 @di.inject
 def handler(
@@ -261,7 +177,7 @@ def handler(
 ### Container Boot Sequence
 
 ```python
-MyAppContainer.boot(
+{{ class_prefix }}Container.boot(
     env=DeploymentEnvironment.Local,
     root=Path("/app"),
     config_root="file:///app/config",
@@ -307,7 +223,7 @@ Functions take either direct attributes or structured Pydantic parameter models,
 
 ```python
 # storage/user.py
-from myapp.model.user import User, UserCreateParams, UserWithOrg
+from {{ module_name }}.model.user import User, UserCreateParams, UserWithOrg
 
 def create_user(session: Session, params: UserCreateParams) -> User:
     """Create a new user from structured params."""
@@ -326,68 +242,15 @@ def get_user(session: Session, user_id: UserID) -> User | None:
     return User.model_validate(row) if row else None
 ```
 
-**Parameter Models:**
-
-Use `*CreateParams`, `*UpdateParams` patterns for structured input:
-
-```python
-# model/user.py
-class UserCreateParams(BaseModel):
-    email: EmailStr
-    name: str
-    org_id: OrgID
-
-class UserUpdateParams(BaseModel):
-    name: str | None = None
-    email: EmailStr | None = None
-```
-
-**Return Model Variants:**
-
-When queries involve joins, create model variants that include the joined data:
-
-```python
-# model/user.py
-class User(BaseModel):
-    """Base user model."""
-    user_id: UserID
-    email: str
-    name: str
-    org_id: OrgID
-
-class UserWithOrg(User):
-    """User with organization details populated via join."""
-    org: Organization  # Populated by join query
-
-# storage/user.py
-def get_user_with_org(session: Session, user_id: UserID) -> UserWithOrg | None:
-    """Get user with org details via join."""
-    stmt = (
-        select(users, organizations)
-        .join(organizations, users.org_id == organizations.org_id)
-        .where(users.user_id == user_id)
-    )
-    row = session.execute(stmt).first()
-    if not row:
-        return None
-    user_row, org_row = row
-    return UserWithOrg(
-        **User.model_validate(user_row).model_dump(),
-        org=Organization.model_validate(org_row),
-    )
-```
-
 **Conventions:**
 - Repository functions are pure functions, not methods on a class
 - Session is always the first parameter
 - Return `None` for missing entities, not exceptions
-- Use `*Params` suffix for input models
-- Use `*With{Relation}` suffix for joined return models
+- Use `*Params` suffix for input models (e.g., `UserCreateParams`)
+- Use `*With{Relation}` suffix for joined return models (e.g., `UserWithOrg`)
 - Flush after writes to get generated values (IDs, timestamps)
 
 **Design Rationale:**
-
-This pattern was chosen for several reasons:
 
 1. **Functional over OOP** - Pure functions with session as the first parameter is cleaner than repository classes with injected sessions. No instance state to manage, easier to test, and the dependency is explicit at the call site.
 
@@ -396,14 +259,6 @@ This pattern was chosen for several reasons:
 3. **Explicit loading** - The `*WithRelation` variants make it obvious when you're doing a joined query vs. a simple fetch. No magic lazy loading that triggers N+1 queries unexpectedly.
 
 4. **None over exceptions** - Returning `None` for missing entities is more Pythonic for expected "not found" cases and composes better with Optional handling.
-
-**Trade-offs:**
-
-1. **Model proliferation** - Each entity can end up with 4-5 Pydantic variants (base, create params, update params, with relation A, with relation B). This is verbose but arguably worth it for the type safety.
-
-2. **Mapping overhead** - Explicit code is needed to convert between SQLAlchemy and Pydantic. Some frameworks auto-generate this, but explicit mapping is often clearer.
-
-3. **Flush semantics** - Relying on `session.flush()` to get generated IDs requires understanding SQLAlchemy's session lifecycle. Not difficult, but a sharp edge for newcomers.
 
 ## Code Style Guide
 
@@ -431,7 +286,7 @@ def get_user_by_id(user_id: UserID, session: Session) -> User | None:
 # Avoid: Unnecessary comments, overly defensive code
 def get_user_by_id(user_id: UserID, session: Session) -> User | None:
     # Get user from database  <- unnecessary
-    if user_id is None:       <- can't happen with type hints
+    if user_id is None:       # <- can't happen with type hints
         return None
     return session.get(User, user_id)
 ```
@@ -497,16 +352,13 @@ const user = await client.getUser({ userId: 'user$...' });
 
 ```bash
 # Enter nix shell (automatic with direnv)
-cd myapp/
+cd {{ module_name }}/
 
 # Install hooks
 install-hooks
 
 # Start services
 dev  # or: process-compose up
-
-# Or start individually:
-process-compose up admin-dev admin-vite
 ```
 
 ### Process Compose Services
@@ -516,29 +368,29 @@ process-compose up admin-dev admin-vite
 | `postgres` | PostgreSQL database | disabled |
 | `memcached` | Cache server | disabled |
 | `rabbitmq` | Message queue | disabled |
-| `{app}-api` | Production backend | disabled |
-| `{app}-dev` | Dev backend (reload) | enabled |
-| `{app}-vite` | Vite frontend | enabled |
-
+{% for app in web_apps %}| `{{ app.module_name }}-api` | Production backend | disabled |
+| `{{ app.module_name }}-dev` | Dev backend (reload) | enabled |
+| `{{ app.module_name }}-vite` | Vite frontend | enabled |
+{% endfor %}
 Enable services: `process-compose up --enable postgres`
 
 ### CLI Usage
 
 ```bash
 # Global options (before subcommand)
-myapp-cli -E production web serve admin     # Set environment
-myapp-cli -c /etc/myapp/config web serve    # Custom config root
-myapp-cli -D web develop admin              # Debug mode
-myapp-cli -o key=value -o other=val cmd     # Override config values
+{{ module_name }}-cli -E production web serve example  # Set environment
+{{ module_name }}-cli -c /etc/{{ module_name }}/config web serve  # Custom config root
+{{ module_name }}-cli -D web develop example           # Debug mode
+{{ module_name }}-cli -o key=value -o other=val cmd    # Override config values
 
 # Web commands
-myapp-cli web serve admin                   # Production server
-myapp-cli web serve admin -w 4              # With 4 workers
-myapp-cli web develop admin                 # Dev server with reload
+{{ module_name }}-cli web serve example                # Production server
+{{ module_name }}-cli web serve example -w 4           # With 4 workers
+{{ module_name }}-cli web develop example              # Dev server with reload
 
 # Schema commands
-myapp-cli schema upgrade                    # Apply migrations
-myapp-cli schema revision -m "add users"    # Create migration
+{{ module_name }}-cli schema upgrade                   # Apply migrations
+{{ module_name }}-cli schema revision -m "add users"   # Create migration
 ```
 
 ### API Client Generation
@@ -550,8 +402,8 @@ generate-api-clients
 
 Or manually:
 ```bash
-myapp-cli web serve admin &
-cd myapp/web/admin/frontend
+{{ module_name }}-cli web serve example &
+cd {{ module_name }}/web/example/frontend
 npx openapi-ts
 ```
 
@@ -559,72 +411,16 @@ npx openapi-ts
 
 ```bash
 # Create migration
-myapp-cli schema revision -m "add users table"
+{{ module_name }}-cli schema revision -m "add users table"
 
 # Apply migrations
-myapp-cli schema upgrade
+{{ module_name }}-cli schema upgrade
 
 # Rollback
-myapp-cli schema downgrade -1
-```
-
-## Template Development
-
-### Jinja Patterns
-
-```jinja
-{# Variable substitution #}
-{{ module_name }}
-{{ class_prefix }}
-{{ app.backend_port }}
-
-{# Loops for multi-generation #}
-{% for app in web_apps %}
-case "{{ app.module_name }}":
-    ...
-{% endfor %}
-
-{# File generation from collections #}
-{% yield model from models %}{{ model.table_name }}{% endyield %}
-
-{# Whitespace control #}
-{%- if condition -%}   {# strips surrounding whitespace #}
-```
-
-### Adding New Template Files
-
-1. Create `.jinja` file in `templates/`
-2. Use `{{ module_name }}/` for module-relative paths
-3. Use `{% yield x from collection %}` for multi-file generation
-4. Run `validate-templates` to check syntax
-
-### Testing Templates
-
-```bash
-# Quick syntax check (no network)
-validate-templates
-
-# Full integration test
-test-fresh
-
-# Test update path
-init-fixture  # first time only
-test-update
+{{ module_name }}-cli schema downgrade -1
 ```
 
 ## Secrets Management
-
-### Local Development
-
-```bash
-# Create vault file
-ansible-vault create config/secrets.vault.yaml
-
-# Edit vault
-ansible-vault edit config/secrets.vault.yaml
-
-# Password cached in keyctl after first use
-```
 
 ### Vault File Structure
 
@@ -736,7 +532,6 @@ generate-api-clients
 | Type | Convention | Example |
 |------|------------|---------|
 | Python modules | snake_case | `user_service.py` |
-| Jinja templates | `{name}.py.jinja` | `main.py.jinja` |
 | Config files | snake_case.yaml | `storage.yaml` |
 | React components | PascalCase.tsx | `UserProfile.tsx` |
 | CSS | kebab-case.css | `user-profile.css` |
@@ -759,4 +554,4 @@ Runtime (set by CLI):
 
 | Variable | Purpose |
 |----------|---------|
-| `__MyApp_BOOT` | Serialized boot config for web workers |
+| `__{{ class_prefix }}_BOOT` | Serialized boot config for web workers |
