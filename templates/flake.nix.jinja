@@ -26,7 +26,25 @@
         config.allowUnfree = true;
         overlays = [ inputs.devshell.overlays.default ];
       };
-      treefmtEval = treefmt-nix.lib.evalModule pkgs ./treefmt.nix;
+      treefmtEval = treefmt-nix.lib.evalModule pkgs {
+        projectRootFile = "flake.nix";
+        programs = {
+          nixfmt.enable = true;
+          prettier.enable = true;
+        };
+        settings.formatter.python = {
+          command = "${pkgs.bash}/bin/bash";
+          options = [
+            "-euc"
+            ''
+              ${pkgs.ruff}/bin/ruff format -q "$@" && ${pkgs.isort}/bin/isort -q --dt "$@"
+            ''
+            "--"
+          ];
+          includes = [ "*.py" ];
+          excludes = [ "*/typings/*" ];
+        };
+      };
     in
     {
       formatter.${system} = treefmtEval.config.build.wrapper;
