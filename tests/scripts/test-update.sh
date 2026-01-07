@@ -6,7 +6,6 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-TEMPLATE_ROOT="$REPO_ROOT/templates"
 FIXTURE_DIR="$SCRIPT_DIR/../fixture"
 
 # Parse arguments
@@ -51,7 +50,7 @@ if [[ ! -d "$FIXTURE_DIR" ]]; then
 fi
 
 echo "=== Update Path Test ==="
-echo "Template: $TEMPLATE_ROOT"
+echo "Template: $REPO_ROOT"
 echo "Fixture:  $FIXTURE_DIR"
 echo ""
 

@@ -6,7 +6,6 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-TEMPLATE_ROOT="$REPO_ROOT/templates"
 ANSWERS_FILE="$SCRIPT_DIR/../answers.yml"
 
 # Parse arguments
@@ -60,7 +59,7 @@ if [[ "$KEEP_TEMP" == "false" ]]; then
 fi
 
 echo "=== Fresh Generation Test ==="
-echo "Template: $TEMPLATE_ROOT"
+echo "Template: $REPO_ROOT"
 echo "Output:   $TEMP_DIR"
 echo "Answers:  $ANSWERS_FILE"
 echo ""
@@ -71,7 +70,7 @@ copier copy \
     --trust \
     --defaults \
     --data-file "$ANSWERS_FILE" \
-    "$TEMPLATE_ROOT" \
+    "$REPO_ROOT" \
     "$TEMP_DIR"
 
 echo ""

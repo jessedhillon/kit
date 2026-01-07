@@ -6,7 +6,6 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-TEMPLATE_ROOT="$REPO_ROOT/templates"
 ANSWERS_FILE="$SCRIPT_DIR/../answers.yml"
 FIXTURE_DIR="$SCRIPT_DIR/../fixture"
 
@@ -19,7 +18,7 @@ if [[ -d "$FIXTURE_DIR" ]]; then
 fi
 
 echo "=== Initializing Fixture ==="
-echo "Template: $TEMPLATE_ROOT"
+echo "Template: $REPO_ROOT"
 echo "Output:   $FIXTURE_DIR"
 echo "Answers:  $ANSWERS_FILE"
 echo ""
@@ -30,7 +29,7 @@ copier copy \
     --trust \
     --defaults \
     --data-file "$ANSWERS_FILE" \
-    "$TEMPLATE_ROOT" \
+    "$REPO_ROOT" \
     "$FIXTURE_DIR"
 
 echo ""
