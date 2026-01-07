@@ -12,14 +12,5 @@ process_compose_port: 18080
 rabbitmq_port: 15632
 
 # Include example app and model to exercise all template paths
-# For multiselect yaml, provide the full value objects matching choices
-web_apps:
-  - name: Example
-    module_name: example
-    class_prefix: Example
-    backend_port: 8081
-    frontend_port: 9091
-
-models:
-  - class_name: Example
-    table_name: example
+include_example_app: true
+include_example_model: true

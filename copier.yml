@@ -37,23 +37,38 @@ rabbitmq_port:
   help: RabbitMQ server port
   default: 5632
 
+include_example_app:
+  type: bool
+  help: Include an example web application?
+  default: true
+
+include_example_model:
+  type: bool
+  help: Include an example database model?
+  default: true
+
+# Computed values (not prompted)
 web_apps:
   type: yaml
-  multiselect: true
-  choices:
-    example-app:
-      value: &example-app
-        name: Example
-        module_name: example
-        class_prefix: Example
-        backend_port: 8081
-        frontend_port: 9091
+  when: false
+  default: |-
+    {% if include_example_app %}
+    - name: Example
+      module_name: example
+      class_prefix: Example
+      backend_port: 8081
+      frontend_port: 9091
+    {% else %}
+    []
+    {% endif %}
 
 models:
   type: yaml
-  multiselect: true
-  choices:
-    example-model:
-      value: &example-model
-        class_name: Example
-        table_name: example
+  when: false
+  default: |-
+    {% if include_example_model %}
+    - class_name: Example
+      table_name: example
+    {% else %}
+    []
+    {% endif %}
