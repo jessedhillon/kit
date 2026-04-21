@@ -1,0 +1,29 @@
+{#- docs.vault index template — rendered by scripts/generate-vault-index.py -#}
+{#- Preamble and areas list are static; category tables are auto-generated -#}
+{#- from filesystem structure + frontmatter descriptions -#}
+# docs.vault index
+
+Johnny Decimal index for project documentation, journals, and shared context.
+
+## Areas
+
+{% for area in areas -%}
+- **{{ area.range_label }}** {{ area.name }}
+{% endfor %}
+{% for area in areas %}
+## {{ area.range_label }} {{ area.name }}
+{% for category in area.categories %}
+
+### {{ category.id }} {{ category.name }}
+
+| Node | Description |
+| ---- | ----------- |
+{% for node in category.nodes -%}
+{% if node.is_directory -%}
+| {{ node.id }} {{ node.name }} | {{ node.description }} |
+{% else -%}
+| [[{{ node.id }} {{ node.name }}]] | {{ node.description }} |
+{% endif -%}
+{% endfor -%}
+{% endfor -%}
+{% endfor -%}

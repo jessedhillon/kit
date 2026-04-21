@@ -76,6 +76,19 @@ copier copy \
 echo ""
 echo "✓ Project generated successfully"
 
+# If a sibling nix-templates repo exists, simulate the post-copier flake init.
+# Falls back silently for CI environments without local nix-templates access.
+NIX_TEMPLATES_DIR="$(cd "$REPO_ROOT/../nix-templates" 2>/dev/null && pwd || true)"
+if [[ -n "$NIX_TEMPLATES_DIR" && -d "$NIX_TEMPLATES_DIR/dev-kit" ]]; then
+    echo ""
+    echo "--- Initializing flake from $NIX_TEMPLATES_DIR#dev-kit ---"
+    (cd "$TEMP_DIR" && nix flake init -t "path:$NIX_TEMPLATES_DIR#dev-kit")
+    echo "✓ Flake initialized"
+else
+    echo ""
+    echo "⊘ Skipping flake init (sibling ../nix-templates not found)"
+fi
+
 # Validate the generated project
 "$SCRIPT_DIR/validate-project.sh" "$TEMP_DIR"
 

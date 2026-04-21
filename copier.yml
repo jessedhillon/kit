@@ -1,5 +1,22 @@
 _subdirectory: templates
 
+_message_after_copy: |
+  Your project has been created.
+
+  Next steps:
+    cd {{ _copier_conf.dst_path }}
+    nix flake init -t github:jessedhillon/nix-templates#dev-kit
+    direnv allow
+    install-hooks
+    poetry install --extras dev --extras test
+
+  Conventions baked in:
+    * Linear issue prefix: {{ module_name[:3].upper() }} (derived from module_name)
+      Update scripts/worktree-create.sh and scripts/render-agent-prompt.py
+      if your project uses a different Linear prefix.
+
+  See README for details.
+
 project_name:
   type: str
   help: Project name
@@ -46,6 +63,26 @@ include_example_model:
   type: bool
   help: Include an example database model?
   default: true
+
+include_llm_scaffold:
+  type: bool
+  help: Include LLM integration scaffolding (langchain providers, prompt templates)?
+  default: false
+
+include_streaming:
+  type: bool
+  help: Include streaming/pub-sub scaffolding (redis + in-memory brokers)?
+  default: false
+
+include_auth:
+  type: bool
+  help: Include authentication scaffolding (JWT, login endpoints)?
+  default: false
+
+include_fixtures:
+  type: bool
+  help: Include YAML fixture loader for test/demo data?
+  default: false
 
 # Computed values (not prompted)
 web_apps:

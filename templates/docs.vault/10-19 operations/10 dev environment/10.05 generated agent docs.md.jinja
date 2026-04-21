@@ -1,0 +1,80 @@
+---
+description: template-driven CLAUDE.md/AGENTS.md generation from vault sources
+---
+
+# Generated agent docs
+
+CLAUDE.md and AGENTS.md are generated artifacts rendered from co-located Jinja2 templates. The vault is the single source of truth for coding conventions and project context; the generated files are what agents load at session start.
+
+## How it works
+
+Anywhere a `CLAUDE.md.j2` or `AGENTS.md.j2` file exists in the repo, the generator renders it to the neighboring `.md` file. The pre-commit hook (`claude-md-check`) verifies that every template's output matches the committed `.md` — if they diverge, the commit is rejected.
+
+```
+CLAUDE.md.j2  →  renders to  →  CLAUDE.md
+AGENTS.md.j2  →  renders to  →  AGENTS.md
+```
+
+When the same content is wanted for both files, `AGENTS.md.j2` can be a symlink to `CLAUDE.md.j2`. Replace the symlink with a real file when different content is needed.
+
+## Template mechanics
+
+Templates are Jinja2 with these globals available:
+
+| Function                                     | Description                                       |
+| -------------------------------------------- | ------------------------------------------------- |
+| `read_vault(path)`                           | read a vault doc, stripping YAML frontmatter      |
+| `vault_section(path, heading, level=2)`      | read a vault doc and extract a section by heading |
+| `extract_section(content, heading, level=2)` | extract a section from already-loaded content     |
+| `strip_title(content)`                       | strip the first h1 heading                        |
+| `bump_headings(content, levels=1)`           | increase heading depth by N levels                |
+
+Vault paths are relative to `docs.vault/`, e.g.:
+
+{% raw %}
+```jinja2
+{% set di = vault_section("10-19 operations/10 dev environment/10.03 coding conventions.md", "Dependency injection") %}
+{{ di }}
+```
+{% endraw %}
+
+The generator runs `nix fmt` on the output after rendering, so templates don't need to worry about whitespace formatting.
+
+## Commands
+
+```bash
+generate-claude-md           # render all templates, write .md files
+generate-claude-md --check   # verify .md files match templates (used by pre-commit)
+```
+
+## Pre-commit hook
+
+The `claude-md-check` hook triggers when any of these files change:
+
+- `CLAUDE.md` or `AGENTS.md` (anywhere in repo)
+- `CLAUDE.md.j2` or `AGENTS.md.j2` (anywhere in repo)
+- Any `.md` file under `docs.vault/`
+- `scripts/generate-claude-md.py`
+
+If the hook fails, run `generate-claude-md` to regenerate, then restage and commit.
+
+## Adding a new template
+
+1. Create a `CLAUDE.md.j2` (or symlink) in the target directory
+2. Run `generate-claude-md` to produce the initial `.md`
+3. Commit both the template and the generated output
+
+The discovery is automatic — no configuration needed.
+
+## Current templates
+
+| Template       | Output      | Notes                                         |
+| -------------- | ----------- | --------------------------------------------- |
+| `CLAUDE.md.j2` | `CLAUDE.md` | main agent context, pulls from vault          |
+| `AGENTS.md.j2` | `AGENTS.md` | symlink to `CLAUDE.md.j2` (identical content) |
+
+## Source
+
+- Generator: `scripts/generate-claude-md.py`
+- Hook: `scripts/hooks/claude-md-check.sh`
+- Shell command: `generate-claude-md` (defined in `flake.nix`)

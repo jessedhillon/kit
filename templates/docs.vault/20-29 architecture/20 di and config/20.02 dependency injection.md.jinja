@@ -1,0 +1,124 @@
+---
+description: container hierarchy, boot sequence, di.inject, Manage, AutoLoader
+---
+
+# Dependency injection
+
+The project uses [`dependency-injector`](https://python-dependency-injector.ets-labs.org/) with custom extensions in `{{ module_name }}.core.di`.
+
+## Container hierarchy
+
+`{{ class_prefix }}Container` is the root declarative container. It holds sub-containers for each subsystem:
+
+```
+{{ class_prefix }}Container
+├── config         Configuration()     — YAML-loaded settings (see 20.01)
+├── secrets        Configuration()     — Vault-loaded secrets (see 20.01)
+├── debug          Singleton(bool)
+├── env            Singleton(DeploymentEnvironment)
+├── logging        Resource(LoggingProvider)
+├── storage        Container(StorageContainer)
+└── vendor         Container(VendorContainer)
+```
+
+Providers are accessed via dotted paths: `di.Provide["storage.persistent.session"]`, `di.Provide["config.web"]`, `di.Provide["secrets.postgresql.password"]`.
+
+## Boot sequence
+
+```python
+{{ class_prefix }}Container.boot(
+    container,
+    env=DeploymentEnvironment.Local,
+    config_root="file:///app/config",
+    override=("-o", "debug=true"),
+    wiring=(module1, module2),
+)
+```
+
+1. Load settings from YAML files into `config`
+2. Apply CLI overrides (`-o key=value`)
+3. Wire DI container to specified modules
+4. Initialize logging
+5. Load secrets (vault or remote secret manager)
+6. Register AutoLoader for web module packages
+
+## `di.inject`
+
+Decorator that resolves `di.Provide[...]` markers in function signatures at call time:
+
+```python
+from {{ module_name }}.core import di
+
+@di.inject
+def handler(
+    service: MyService = di.Provide["container.path"],
+    config: Settings = di.Provide["config.web", di.as_(Settings)],
+):
+    pass
+```
+
+Key rules:
+
+- **Only works on module-level functions and class methods.** [`container.wire()`](https://python-dependency-injector.ets-labs.org/wiring.html) scans `dir(module)` and cannot find nested closures.
+- For factory functions returning closures with DI markers, call `di.inject(closure)` before returning.
+- `di.Provide[...]` uses `__getitem__`, not a function call — B008 does not apply. Do not add `# noqa: B008`.
+
+## `di.Manage`
+
+Shorthand for [`Closing[Provide[...]]`](https://python-dependency-injector.ets-labs.org/wiring.html#closing-resources) — acquires a resource and ensures it's closed after use. Used for session-scoped resources like database sessions:
+
+```python
+def get_user(
+    session: Session = Depends(di.Manage["storage.persistent.session"]),
+) -> UserResponse:
+```
+
+## `di.as_(Type)`
+
+Type cast modifier — tells the container to cast the resolved value to the given type. Needed when the provider returns a broader type than you want:
+
+```python
+config: StorageSettings = di.Provide["config.storage", di.as_(StorageSettings)]
+```
+
+## AutoLoader
+
+Automatically wires DI markers in modules as they're imported. Installed during boot for web packages — this is why `@di.inject` isn't needed on every FastAPI route handler in those packages (they're wired on import).
+
+For modules outside the auto-wired packages, you need explicit `@di.inject` or manual `container.wire(modules=[...])`.
+
+## Conventions
+
+**Inject at call site, not on `__init__`** — do not store injected resources on `self`:
+
+```python
+# Good
+class MyService(object):
+    @di.inject
+    def process(
+        self,
+        payload: Payload,
+        logging: LoggingProvider = di.Provide["logging"],
+    ) -> Result:
+        logger = logging.get_logger()
+
+# Bad
+class MyService(object):
+    def __init__(self, logging: LoggingProvider = di.Provide["logging"]):
+        self._logging = logging  # don't do this
+```
+
+**Logging via DI** — always use `LoggingProvider` via injection, not bare `logging.getLogger()`:
+
+```python
+@di.inject
+def process(*, logging: LoggingProvider = di.Provide["logging"]):
+    logger = logging.get_logger()
+    logger.info("processing started")
+```
+
+**`Depends()` in FastAPI routes** — any function using `Depends(di.Manage["..."])` or `Depends(di.Provide["..."])` **must** be wired. Unwired DI markers inside `Depends()` are callable but return marker objects, not resolved providers.
+
+## Error context
+
+The project monkey-patches `dependency_injector.wiring` to add injection site context to DI resolution errors. When a provider fails to resolve, the error message includes the function name and its DI parameter bindings.

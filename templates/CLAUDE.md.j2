@@ -1,0 +1,259 @@
+{#- CLAUDE.md template — rendered by scripts/generate-claude-md.py -#}
+{#- Variables injected by the generator: module_name, project_name, project_description, class_prefix, linear_prefix -#}
+{#- Vault content is pulled from docs.vault/ via read_vault() and vault_section() -#}
+{#- Run `generate-claude-md` to regenerate after editing this template or its vault sources. -#}
+# {{ project_name }}
+
+{{ project_description }}
+
+## MCP Servers
+
+Both the process-compose and postgres MCP servers require an explicit `connect()` call before any other tool will work. Call these at the start of every session:
+
+- `mcp__process-compose-mcp__connect(port=<PC_PORT_NUM>)`
+- `mcp__postgres__connect(database_uri="postgresql://localhost:<PGPORT>/{{ module_name }}")`
+
+To determine the correct values: if `.envrc.local` exists in your project root, read `PC_PORT_NUM` and `PGPORT` from it — these are your assigned ports and you must use them. Otherwise, use the defaults from your flake.
+
+## Quick Reference
+
+### Commands
+
+```bash
+stack-up                            # Start all dev services (process-compose)
+generate-api-clients                # Generate TypeScript API clients from OpenAPI
+generate-claude-md                  # Regenerate CLAUDE.md from template + vault sources
+install-hooks                       # Install pre-commit hooks
+
+{{ module_name }}-cli web develop <app>   # Dev server with live-reload
+{{ module_name }}-cli web serve <app>     # Production server
+{{ module_name }}-cli schema up head      # Run database migrations
+```
+
+## Project Knowledge Base
+
+`docs.vault/` is a Johnny Decimal-organized knowledge base (Obsidian-compatible) for persisting project context across sessions: architecture decisions, product strategy, user research, and operational docs.
+
+- **Conventions**: `docs.vault/00-09 meta/00 index/00.01 conventions.md`
+- **Cross-references** use `[[wikilink]]` syntax
+
+Consult the vault when you need context on product decisions, architecture rationale, or user research findings. Use the index below to find relevant documents by topic — read the vault doc before making assumptions about how something works or why a decision was made. When new decisions are made or context is established that would be useful across sessions, add or update the relevant vault document.
+
+### Vault Index
+
+{% set index_content = read_vault("00-09 meta/00 index/00.00 index.md") -%}
+{{ bump_headings(strip_title(index_content).strip(), 2) }}
+
+## Architecture Patterns
+
+### Dependency Injection
+{% set di_section = vault_section("10-19 operations/10 dev environment/10.03 coding conventions.md", "Dependency injection") %}
+{{ di_section }}
+
+### Configuration System
+
+See `config/CLAUDE.md` for the full configuration system reference (YAML settings, environment cascading, secrets, CLI overrides).
+
+### Container Boot Sequence
+
+```python
+{{ class_prefix }}Container.boot(
+    env=DeploymentEnvironment.Local,
+    root=Path("/app"),
+    config_root="file:///app/config",
+    override=("-o", "debug=true"),
+)
+```
+
+1. Load settings from YAML sources
+2. Apply CLI overrides
+3. Wire DI container to packages
+4. Initialize logging
+5. Load secrets (vault)
+6. Register AutoLoader for web modules
+
+### Model ID Pattern
+{% set id_section = vault_section("10-19 operations/10 dev environment/10.03 coding conventions.md", "Model ID pattern") %}
+{{ id_section }}
+
+### Storage/Repository Pattern
+
+See `{{ module_name }}/storage/CLAUDE.md` for the full storage/repository pattern reference (get/create/update patterns, NotSet sentinel, overloads).
+
+## Code Style Guide
+
+### Python
+{% set python_content = read_vault("10-19 operations/10 dev environment/10.03 coding conventions.md") %}
+{{ extract_section(python_content, "Python") }}
+
+### Pydantic Models
+{% set pydantic_section = vault_section("10-19 operations/10 dev environment/10.03 coding conventions.md", "Pydantic models") %}
+{{ pydantic_section }}
+
+### SQLAlchemy Tables
+{% set sqla_section = vault_section("10-19 operations/10 dev environment/10.03 coding conventions.md", "SQLAlchemy tables") %}
+{{ sqla_section }}
+
+### FastAPI Routes
+{% set fastapi_section = vault_section("10-19 operations/10 dev environment/10.03 coding conventions.md", "FastAPI routes") %}
+{{ fastapi_section }}
+
+### Module and Package Structure
+{% set module_section = vault_section("10-19 operations/10 dev environment/10.03 coding conventions.md", "Module and package structure") %}
+{{ module_section }}
+
+### TypeScript/React
+{% set ts_section = vault_section("10-19 operations/10 dev environment/10.03 coding conventions.md", "TypeScript/React") %}
+{{ ts_section }}
+
+## Session Journal
+
+Maintain a session journal at `docs.vault/10-19 operations/12 session journal/{date}_{session_id}.md` throughout the session. Create the file early and add entries as work progresses — don't wait until the end. To find your session ID, look for the most recently modified `.jsonl` file in `.state/claude/projects/` for this project.
+
+The journal uses this format:
+
+```markdown
+---
+description: session journal — {date} ({short_id})
+session_id: {full_session_id}
+date: {YYYY-MM-DD}
+branch: {current_branch}
+---
+
+## Decisions
+- What was decided and why
+
+## Learnings
+- What was learned and where/how it came up
+
+## Action Items
+- What needs to be done and any relevant context
+
+## Key Exchanges
+- One-sentence summary of an exchange and its outcome
+```
+
+Omit empty sections.
+
+## Development Workflow
+
+### Starting Development
+
+```bash
+cd {{ module_name }}/
+direnv allow
+install-hooks
+stack-up
+```
+
+### CLI Usage
+
+```bash
+{{ module_name }}-cli -E production web serve {{ module_name }}  # Set environment
+{{ module_name }}-cli -D web develop {{ module_name }}           # Debug mode
+{{ module_name }}-cli -o key=value cmd                           # Override config
+{{ module_name }}-cli schema up head                             # Apply migrations
+{{ module_name }}-cli schema revision -m "add users"             # Create migration
+```
+
+### API Client Generation
+
+```bash
+generate-api-clients {{ module_name }}
+```
+
+## Testing
+
+See `tests/CLAUDE.md` for the full testing reference (running tests, transaction rollback pattern, factory fixtures, API test conventions).
+
+## Commit Convention
+{% set commit_section = vault_section("10-19 operations/10 dev environment/10.03 coding conventions.md", "Commit conventions") %}
+{{ commit_section }}
+
+## Linear Issue Convention
+{% set linear_section = vault_section("10-19 operations/10 dev environment/10.03 coding conventions.md", "Linear issue conventions") %}
+{{ linear_section }}
+
+### Issue Status Workflow
+
+Move issues through statuses as work progresses:
+
+| Status      | When to use                        |
+| ----------- | ---------------------------------- |
+| In Progress | Actively working on the issue      |
+| In Review   | PR opened, awaiting review/merge   |
+| Done        | Code merged to master (not before) |
+
+Do not mark issues as Done when opening a PR — they are only Done after the code is merged.
+
+### Branching and PR Strategy
+{% set pr_section = vault_section("10-19 operations/10 dev environment/10.03 coding conventions.md", "PR conventions") %}
+{{ pr_section }}
+
+## Debugging
+
+### Python Debugger
+
+```python
+# Configured via PYTHONBREAKPOINT=jdbpp.set_trace
+breakpoint()  # Drops into jdbpp debugger
+```
+
+### SQL Query Logging
+
+Debug mode (`-D` flag) enables SQL logging with formatted output via `sql_formatter`.
+
+## Common Issues
+
+### "Module not found" after adding dependency
+
+```bash
+poetry install
+```
+
+### Type errors with injected dependencies
+
+Ensure `di.as_(Type)` is used when the provider returns a different type:
+
+```python
+config: Settings = di.Provide["config", di.as_(Settings)]
+```
+
+### Vault password prompt hanging
+
+The vault file doesn't exist — create it first:
+
+```bash
+ansible-vault create config/secrets.vault.yaml
+```
+
+### Frontend API types outdated
+
+```bash
+generate-api-clients {{ module_name }}
+```
+
+## File Naming Conventions
+
+| Type             | Convention      | Example            |
+| ---------------- | --------------- | ------------------ |
+| Python modules   | snake_case      | `user_service.py`  |
+| Config files     | snake_case.yaml | `storage.yaml`     |
+| React components | PascalCase.tsx  | `UserProfile.tsx`  |
+| CSS              | kebab-case.css  | `user-profile.css` |
+| TypeScript       | camelCase.ts    | `apiClient.ts`     |
+
+## Environment Variables
+
+Set by devshell (`flake.nix`):
+
+| Variable           | Purpose                      |
+| ------------------ | ---------------------------- |
+| `XDG_STATE_HOME`   | State directory (`.state/`)  |
+| `PGDATA`           | PostgreSQL data directory    |
+| `PGHOST`           | PostgreSQL socket directory  |
+| `PGPORT`           | PostgreSQL port              |
+| `PC_PORT_NUM`      | process-compose HTTP port    |
+| `RABBITMQ_*`       | RabbitMQ configuration       |
+| `PYTHONBREAKPOINT` | Debugger (`jdbpp.set_trace`) |
+| `PRE_COMMIT_HOME`  | Pre-commit cache             |

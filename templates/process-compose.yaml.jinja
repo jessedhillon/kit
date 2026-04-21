@@ -2,12 +2,12 @@ version: "0.1"
 
 processes:
   postgres:
-    command: 'postgres -p{{ postgresql_port }} -k ${XDG_STATE_HOME} -c logging_collector=off -c log_destination=stderr -c log_min_messages=INFO -c log_statement=all'
+    command: 'postgres -p${PGPORT:-{{ postgresql_port }}} -k ${XDG_STATE_HOME} -c logging_collector=off -c log_destination=stderr -c log_min_messages=INFO -c log_statement=all'
     disabled: true
     is_daemon: true
     readiness_probe:
       exec:
-      command: "pg_isready -p{{ postgresql_port }}"
+      command: "pg_isready -p${PGPORT:-{{ postgresql_port }}}"
       interval: 5s
     environment:
       - PGDATA=${PGDATA}
@@ -20,14 +20,14 @@ processes:
       timeout: 30s
 
   memcached:
-    command: "memcached -u nobody -m 64 -p {{ memcached_port }}"
+    command: "memcached -u nobody -m 64 -p ${MEMCACHED_PORT:-{{ memcached_port }}}"
     disabled: true
     shutdown:
       signal: 15  # TERM
       timeout: 10s
     readiness_probe:
       exec:
-        command: "ss -tanl | grep {{ memcached_port }}"
+        command: "ss -tanl | grep ${MEMCACHED_PORT:-{{ memcached_port }}}"
       interval: 5s
       timeout: 2s
 

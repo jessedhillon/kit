@@ -37,4 +37,7 @@ class Settings(BaseSettings, BaseModel):  # pyright: ignore [reportIncompatibleV
         dotenv_settings: PydanticBaseSettingsSource,
         file_secret_settings: PydanticBaseSettingsSource,
     ) -> tuple[PydanticBaseSettingsSource, ...]:  # noqa: E501
-        return init_settings, YAMLCascadingSettingsSource(settings_cls), OverrideSettingsSource(settings_cls)
+        # Sources are processed in priority order (first = highest priority).
+        # OverrideSettingsSource must come before YAMLCascadingSettingsSource
+        # so that CLI -o overrides take precedence over YAML config.
+        return init_settings, OverrideSettingsSource(settings_cls), YAMLCascadingSettingsSource(settings_cls)

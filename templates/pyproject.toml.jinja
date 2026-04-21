@@ -28,6 +28,26 @@ dependencies = [
     "uuid-utils~=0.10.0",
     "uvicorn~=0.34.0",
     "xdg-base-dirs~=6.0.0",
+{%- if include_llm_scaffold %}
+    # LLM scaffold
+    "langchain~=0.3.0",
+    "langchain-openai~=0.2.0",
+    "langchain-anthropic~=0.3.0",
+    "jinja2~=3.1.0",
+{%- endif %}
+{%- if include_streaming %}
+    # Streaming scaffold
+    "redis~=5.2.0",
+{%- endif %}
+{%- if include_auth %}
+    # Auth scaffold
+    "bcrypt~=4.2.0",
+    "pyjwt~=2.10.0",
+{%- endif %}
+{%- if include_fixtures %}
+    # Fixtures scaffold
+    "PyYAML~=6.0.0",
+{%- endif %}
 ]
 
 [project.optional-dependencies]
@@ -36,10 +56,10 @@ test = [
 ]
 dev = [
     "jdbpp@git+ssh://git@github.com/jessedhillon/jdbpp.git@14ade861a42be37536cc2612d028a2ae2dc589c8",
-    "google-api-python-client~=2.163.0",
-    "google-api-python-client-stubs~=1.29.0",
     "isort~=6.0.0",
+    "jinja2~=3.1.0",
     "pyright~=1.1.0",
+    "pyyaml~=6.0.0",
     "rpdb@git+ssh://git@github.com/incognita-labs/rpdb.git@v0.2.1",
     "ruff~=0.11.0",
     "sql_formatter~=0.6.0",
@@ -47,6 +67,15 @@ dev = [
 
 [project.scripts]
 {{ module_name }}-cli = "{{ module_name }}.cli.__main__:execute_command"
+{% if web_apps -%}
+
+# Web apps register as entry points so the CLI can discover them dynamically.
+# Add new apps here and under [tool.poetry.plugins] to make them `web serve <name>` targets.
+[project.entry-points."{{ module_name }}.web"]
+{%- for app in web_apps %}
+{{ app.module_name }} = "{{ module_name }}.web.{{ app.module_name }}:app"
+{%- endfor %}
+{%- endif %}
 
 [tool.setuptools]
 packages = [ "{{ module_name }}" ]

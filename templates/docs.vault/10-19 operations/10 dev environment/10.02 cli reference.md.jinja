@@ -1,0 +1,79 @@
+---
+description: '`{{ module_name }}-cli` commands, shell commands, common workflows'
+---
+
+# CLI reference
+
+Full reference for `{{ module_name }}-cli` and shell commands provided by the devshell.
+
+## Global options
+
+```bash
+{{ module_name }}-cli [options] <subcommand>
+
+  -E, --env          Deployment environment (Local, Test, Development, Staging, Production)
+  -c, --config-root  Config directory (default: config/)
+  -s, --secrets-path Secrets file path
+  -o, --override     Override config values: -o key.path=value
+  -D, --debug        Enable debug mode (SQL logging, post-mortem debugger)
+```
+
+## Subcommands
+
+| Command       | Purpose                                                            |
+| ------------- | ------------------------------------------------------------------ |
+| `web serve`   | Start a web app in production mode                                 |
+| `web develop` | Start a web app with live-reload + remote debugger                 |
+| `schema`      | Database migration commands (up, down, current, history, generate) |
+| `script`      | Utility scripts                                                    |
+
+## Shell commands
+
+These are provided by the Nix devshell (available after `direnv allow`):
+
+| Command                | Purpose                                           |
+| ---------------------- | ------------------------------------------------- |
+| `stack-up`             | Start all dev services via process-compose        |
+| `generate-api-clients` | Generate TypeScript API clients from OpenAPI spec |
+| `install-hooks`        | Install pre-commit hooks                          |
+
+## Common workflows
+
+```bash
+# Start everything for local dev
+stack-up
+
+# Backend only (no frontend)
+{{ module_name }}-cli web develop <app>
+
+# Override a config value for one command
+{{ module_name }}-cli -o storage.postgresql.port=5433 schema up head
+
+# Debug mode with SQL logging
+{{ module_name }}-cli -D web develop <app>
+
+# Run a utility script
+{{ module_name }}-cli script <name>
+```
+
+## Schema subcommands
+
+```bash
+{{ module_name }}-cli schema current              # Show current migration
+{{ module_name }}-cli schema up head              # Apply all pending migrations
+{{ module_name }}-cli schema down -1              # Rollback one migration
+{{ module_name }}-cli schema generate "add table" # Create a new migration
+{{ module_name }}-cli schema history              # View migration history
+```
+
+## API client generation
+
+```bash
+# Automatic (starts/stops server as needed)
+generate-api-clients <app>
+
+# Use --force to skip dirty-file check
+generate-api-clients <app> --force
+```
+
+If the server is already running (via `stack-up`), it will use the running instance.

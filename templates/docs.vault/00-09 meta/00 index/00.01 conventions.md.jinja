@@ -1,0 +1,83 @@
+---
+description: node structure, depth constraint, naming, frontmatter, cross-references
+---
+
+# Vault conventions
+
+Adaptations to standard [Johnny Decimal](https://johnnydecimal.com/) for this project.
+
+## Node structure
+
+A JD node (e.g. `32.01`) can be either:
+
+- **A file**: `32.01 interviews.md` — a single document
+- **A directory**: `32.01 interviews/` — a collection of related documents
+
+### Directory nodes
+
+When a node is a directory, its contents are **tertiary-numbered files** of the form `XX.YY.ZZ name with spaces`:
+
+```
+32 user research/
+└── 32.01 interviews/
+    ├── 32.01.01 first person 2026-03-20.md
+    ├── 32.01.02 another person 2026-04-15.md
+    └── assets/
+        └── call-recording-notes.png
+```
+
+The tertiary number establishes ordering and identity within the collection, consistent with how two-tiered node numbers work at the category level.
+
+### Depth constraint
+
+Beyond the tertiary file level, **only one more level of subdirectory is allowed** — strictly for assets (images, attachments, supporting files). No deeper nesting.
+
+```
+# Fine
+32.01 interviews/assets/screenshot.png
+33.04 roadmap targets/33.04.01 some focused problem.md
+
+# Bad
+32.01 interviews/2026/march/notes/draft.md
+```
+
+## Frontmatter
+
+Every vault document must include YAML frontmatter with a `description` field:
+
+```markdown
+---
+description: short summary of what the document covers
+---
+```
+
+This description is used by the auto-generated vault index (`00.00 index.md`). When you add or modify a vault document, run `generate-vault-index` to regenerate the index. The `vault-index-check` pre-commit hook will reject commits where the index is out of date.
+
+Directory nodes should place their frontmatter in an `overview.md` file inside the directory.
+
+## Cross-references
+
+Use `[[wikilink]]` syntax for cross-references between vault documents (Obsidian-compatible). Reference by filename without path:
+
+```markdown
+See [[20.02 dependency injection]] for details.
+```
+
+## Linear issue references
+
+Reference Linear tickets as markdown links using the full URL:
+
+```markdown
+See [{{ module_name[:3].upper() }}-474](https://linear.app/<your-linear-workspace>/issue/{{ module_name[:3].upper() }}-474) for details.
+```
+
+The URL format is `https://linear.app/<your-linear-workspace>/issue/{{ module_name[:3].upper() }}-XXX`.
+
+## Naming
+
+All names are **lowercase** (except proper nouns or technical terms). JD-numbered items use spaces, not hyphens, since the decimal prefix already makes them unique and unambiguous.
+
+- Area directories: `XX-XX name` (e.g. `30-39 product`)
+- Category directories: `XX name` (e.g. `32 user research`)
+- Node files/directories: `XX.XX name with spaces` (e.g. `30.01 engagement first design`)
+- Tertiary nodes: `XX.YY.ZZ name with spaces` (e.g. `33.04.01 some focused problem`)

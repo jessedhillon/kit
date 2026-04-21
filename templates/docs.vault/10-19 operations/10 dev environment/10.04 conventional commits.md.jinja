@@ -1,0 +1,145 @@
+---
+description: commit message format, types, areas, revise semantics, hook config
+---
+
+# Conventional commits
+
+Commit messages are validated by the [`conventional-msg`](https://github.com/jessedhillon/conventional-msg) pre-commit hook at the `commit-msg` stage. The hook enforces a modified conventional commit format with types, areas, tags, and minimum message length.
+
+## Format
+
+{% raw %}
+```
+type(area[,...])[!]: [{tag}] message
+```
+{% endraw %}
+
+| Component      | Required | Description                                                   |
+| -------------- | -------- | ------------------------------------------------------------- |
+| `type`         | yes      | Commit category (see below)                                   |
+| `(area[,...])` | usually  | Affected code area(s), comma-separated, alphabetically sorted |
+| `!`            | no       | Breaking change indicator (only with `{tag}`)                 |
+| `{tag}`        | no       | Modifier in curly braces (e.g. `{tests-failing}`)             |
+| `message`      | yes      | Description, minimum 8 characters                             |
+
+## Types
+
+| Type     | Purpose                   | Area required |
+| -------- | ------------------------- | ------------- |
+| `feat`   | new feature               | yes           |
+| `fix`    | bug fix                   | yes           |
+| `chore`  | maintenance, dependencies | yes           |
+| `docs`   | documentation changes     | no            |
+| `revise` | revise earlier commits    | special       |
+| `wip`    | work in progress          | no            |
+
+`test` and `refactor` are NOT allowed types. Use `revise` for refactoring work.
+
+## Areas
+
+Areas are unrestricted by default — any `[\w-]+` value is accepted. Multiple areas are comma-separated and must be **alphabetically sorted**:
+
+```bash
+# Good
+feat(api,frontend): add user dashboard
+
+# Bad — not sorted
+feat(frontend,api): add user dashboard
+```
+
+Types listed as "area required: no" (`docs`, `wip`) can omit the area entirely:
+
+```bash
+docs: update vault index
+wip: checkpoint exploratory spike
+```
+
+## The `revise` type
+
+`revise` has special semantics for referencing earlier work.
+
+### With ancestor commit hash
+
+```bash
+revise(a1b2c3d): forgot to add config.yaml
+```
+
+The area is a git commit hash (6+ hex characters). The hook verifies:
+
+1. The hash refers to an existing commit
+2. The commit is an ancestor of HEAD
+
+Use this when revising a specific prior commit that has already been pushed or is on another branch.
+
+### Without scope
+
+```bash
+revise: clean up imports after rebase
+```
+
+Allowed only on feature branches with 2+ commits from `master`. Not allowed on `master` itself or the first (basal) commit of a branch. Use this for general cleanup on a feature branch that will be squashed.
+
+### With a non-hash area
+
+```bash
+revise(storage): rewrite query to avoid N+1
+```
+
+Regular area scope — no git validation, just indicates the area being revised.
+
+## Tags
+
+Tags are optional modifiers in curly braces after a breaking change indicator (`!`):
+
+```bash
+chore(lib)!: {tests-failing} redefined pi constant
+```
+
+Default allowed tags: `tests-failing`.
+
+## Examples
+
+```bash
+# Feature with area
+feat(api): add user registration endpoint
+
+# Fix with area
+fix(storage): handle null timestamps in migration
+
+# Chore with area
+chore(deps): update fastapi to 0.115
+
+# Docs without area
+docs: update deployment runbook
+
+# Revision referencing ancestor commit
+revise(a1b2c3d): add missing test fixture
+
+# Revision on feature branch (no scope)
+revise: reorder imports
+
+# WIP without area
+wip: experimenting with new pipeline
+
+# Multiple sorted areas
+feat(api,frontend): add user profile page
+```
+
+## Configuration
+
+The hook reads `[tool.conventional-msg]` from `pyproject.toml` in the repo root. Available options:
+
+| Key               | Default                                         | Description                          |
+| ----------------- | ----------------------------------------------- | ------------------------------------ |
+| `types`           | `feat`, `fix`, `chore`, `docs`, `revise`, `wip` | allowed type values                  |
+| `areas`           | `None` (unrestricted)                           | allowed area values, `None` = any    |
+| `tags`            | `tests-failing`                                 | allowed tag values                   |
+| `min_len`         | `8`                                             | minimum message character count      |
+| `branch`          | `master`                                        | default branch name for revise logic |
+| `allow_omit_area` | `docs`, `wip`                                   | types that don't require an area     |
+
+## Installation
+
+The hook is installed via `install-hooks` (or `pre-commit install --install-hooks`). It runs at the `commit-msg` stage — after you write your commit message but before the commit is created. If the message doesn't match the format, the commit is rejected with an error message.
+
+Source: [`jessedhillon/conventional-msg`](https://github.com/jessedhillon/conventional-msg)

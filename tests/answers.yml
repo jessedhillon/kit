@@ -14,3 +14,9 @@ rabbitmq_port: 15632
 # Include example app and model to exercise all template paths
 include_example_app: true
 include_example_model: true
+
+# Optional scaffold flags — off by default so the base test covers the smallest footprint
+include_llm_scaffold: false
+include_streaming: false
+include_auth: false
+include_fixtures: false

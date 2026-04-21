@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ -z "${1:-}" ]]; then
+  echo "Usage: worktree-remove.sh <issue-number>" >&2
+  echo "Example: worktree-remove.sh 328" >&2
+  exit 1
+fi
+
+issue_id="$1"
+worktree_dir="../.worktrees/{{ module_name }}/{{ module_name }}-${issue_id}"
+
+if ! git worktree list | grep -q "{{ module_name }}-${issue_id}"; then
+  echo "No worktree found for {{ module_name[:3].upper() }}-${issue_id}" >&2
+  exit 1
+fi
+
+branch="$(git worktree list --porcelain | grep -A2 "{{ module_name }}-${issue_id}" | grep '^branch ' | sed 's|^branch refs/heads/||')"
+
+echo "Removing worktree at $worktree_dir..."
+git worktree remove "$worktree_dir" --force
+
+if [[ -n "$branch" ]] && git branch --list "$branch" | grep -q "$branch"; then
+  echo "Deleting local branch $branch..."
+  git branch -D "$branch"
+fi
+
+echo "Done. Worktree and branch for {{ module_name[:3].upper() }}-${issue_id} removed."

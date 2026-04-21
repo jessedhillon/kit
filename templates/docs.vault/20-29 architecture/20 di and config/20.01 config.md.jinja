@@ -1,0 +1,119 @@
+---
+description: YAML settings, environment cascading, secrets, CLI overrides
+---
+
+# Configuration system
+
+[Pydantic Settings](https://docs.pydantic.dev/latest/concepts/pydantic_settings/) with custom YAML sources, environment layering, CLI overrides, and encrypted secrets.
+
+## File-per-concern mapping
+
+Each field on the root `Settings` class maps to a YAML file in `config/`:
+
+```python
+class Settings(BaseSettings):
+    root: FileUrl
+    env: DeploymentEnvironment
+    override: tuple[str, ...]
+
+    logging: LoggingSettings    # → config/logging.yaml
+    storage: StorageSettings    # → config/storage.yaml
+    web: WebSettings            # → config/web.yaml
+    vendor: VendorSettings      # → config/vendor.yaml
+```
+
+## Source priority (highest to lowest)
+
+1. **Init settings** — `root`, `env`, `override` passed directly at boot
+2. **CLI overrides** — `-o key.path=value` parsed as YAML values
+3. **Environment-specific YAML** — `config/env.d/{env}/storage.yaml`
+4. **Base YAML** — `config/storage.yaml`
+
+## Environment cascading
+
+```
+config/
+├── logging.yaml              # base (always loaded)
+├── storage.yaml
+├── web.yaml
+├── vendor.yaml
+└── env.d/
+    ├── development/
+    │   └── storage.yaml      # overrides for development
+    ├── test/
+    │   └── storage.yaml      # overrides for test
+    ├── staging/
+    │   └── storage.yaml
+    └── production/
+        └── storage.yaml
+```
+
+For `DeploymentEnvironment.Local`, only base config is loaded. For other environments, the env-specific file takes precedence where it exists.
+
+## CLI overrides
+
+Override any nested value via dot-notation. Values are parsed as YAML:
+
+```bash
+{{ module_name }}-cli -o storage.postgresql.port=5433 schema up head
+{{ module_name }}-cli -o "web.example.backend.host=0.0.0.0" web serve example
+{{ module_name }}-cli -o debug=true -o storage.postgresql.database=test cmd
+```
+
+## Secrets
+
+Secrets are loaded separately via the `Secrets` class:
+
+- **Local/dev**: [Ansible Vault](https://docs.ansible.com/ansible/latest/vault_guide/index.html) encrypted files (`config/secrets.vault.yaml`). Vault password is prompted once and cached in the kernel keyring via `keyctl`.
+- **Staging/production**: a secret-manager backend (configured per deployment).
+
+Environment-specific secrets follow the same cascading pattern:
+
+```
+config/
+├── secrets.vault.yaml           # local/shared
+└── env.d/
+    ├── staging/
+    │   └── secrets.vault.yaml
+    └── production/
+        └── secrets.vault.yaml
+```
+
+Managing vault files:
+
+```bash
+ansible-vault create config/secrets.vault.yaml
+ansible-vault edit config/secrets.vault.yaml
+```
+
+## Accessing config in code
+
+Via dependency injection (see [20.02 dependency injection](20.02 dependency injection.md)):
+
+```python
+from {{ module_name }}.core import di
+from {{ module_name }}.core.config import StorageSettings
+
+@di.inject
+def handler(
+    storage_cf: StorageSettings = di.Provide["config.storage", di.as_(StorageSettings)],
+):
+    port = storage_cf.persistent.postgresql.port
+```
+
+Secrets follow the same pattern:
+
+```python
+@di.inject
+def handler(
+    api_key: p.Secret[str] = di.Provide["secrets.vendor.api_key"],
+):
+    key = api_key.get_secret_value()
+```
+
+## Conventions
+
+- Config values are validated at boot time by Pydantic — type errors fail fast.
+- Never read config from environment variables directly; use the Settings → YAML → DI pipeline.
+- Use `-o` overrides for development/debugging, not for persistent config changes.
+- Secrets are always `p.Secret[T]` — call `.get_secret_value()` to unwrap.

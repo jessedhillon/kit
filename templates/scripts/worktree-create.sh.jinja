@@ -1,0 +1,94 @@
+#!/usr/bin/env bash
+# Create a git worktree with isolated port assignments for agent workflows.
+# Port assignments are derived from the issue number to avoid collisions
+# between concurrent worktrees. Override in .envrc.local if needed.
+set -euo pipefail
+
+if [[ -z "${1:-}" || -z "${2:-}" ]]; then
+  echo "Usage: worktree-create.sh <issue-number> <branch-name> [base-ref]" >&2
+  echo "Example: worktree-create.sh 328 claude/{{ module_name[:3].lower() }}-328-feature" >&2
+  echo "Example: worktree-create.sh 329 claude/{{ module_name[:3].lower() }}-329-stacked origin/claude/{{ module_name[:3].lower() }}-328-base" >&2
+  exit 1
+fi
+
+issue_id="$1"
+branch="$2"
+base_ref="${3:-master}"
+
+if ! [[ "$issue_id" =~ ^[0-9]+$ ]]; then
+  echo "Error: issue-number must be numeric (e.g., 309), not a full identifier (e.g., {{ module_name[:3].upper() }}-309)" >&2
+  exit 1
+fi
+
+worktree_dir="../.worktrees/{{ module_name }}/{{ module_name }}-${issue_id}"
+
+repo_root="$(git rev-parse --show-toplevel)"
+abs_worktree="$(cd "$repo_root" && cd "$(dirname "$worktree_dir")" 2>/dev/null && echo "$(pwd)/$(basename "$worktree_dir")" || echo "$repo_root/$worktree_dir")"
+
+if git worktree list | grep -q "$worktree_dir"; then
+  echo "Worktree already exists: $worktree_dir" >&2
+  exit 1
+fi
+
+mkdir -p "$(dirname "$worktree_dir")"
+
+echo "Creating worktree at $worktree_dir on branch $branch..."
+if git show-ref --verify --quiet "refs/heads/$branch"; then
+  echo "Warning: branch '$branch' already exists, checking it out." >&2
+  git worktree add "$worktree_dir" "$branch"
+else
+  git worktree add "$worktree_dir" -b "$branch" "$base_ref"
+fi
+
+# Derive port assignments from issue number.
+# Base = 10000 + (issue_id * 10) to stay in unprivileged range and avoid collisions.
+base=$((10000 + issue_id * 10))
+pg_port=$((base + 0))
+memcached_port=$((base + 1))
+rabbitmq_port=$((base + 2))
+pc_port=$((base + 3))
+{%- for app in web_apps %}
+{{ app.module_name }}_backend_port=$((base + {{ 4 + loop.index0 * 2 }}))
+{{ app.module_name }}_frontend_port=$((base + {{ 5 + loop.index0 * 2 }}))
+{%- endfor %}
+
+if [[ $pg_port -gt 65529 ]]; then
+  echo "Warning: issue number too large, generated ports exceed 65535." >&2
+  echo "Edit .envrc.local in the worktree to set valid ports manually." >&2
+fi
+
+cat > "$worktree_dir/.envrc.local" <<EOF
+# Auto-generated port assignments for {{ module_name[:3].upper() }}-${issue_id}
+# Edit these if they conflict with other worktrees or system services.
+export PGPORT=${pg_port}
+export MEMCACHED_PORT=${memcached_port}
+export RABBITMQ_NODE_PORT=${rabbitmq_port}
+export PC_PORT_NUM=${pc_port}
+{%- for app in web_apps %}
+export {{ app.module_name.upper() }}_BACKEND_PORT=${{ '{' }}{{ app.module_name }}_backend_port}
+export {{ app.module_name.upper() }}_FRONTEND_PORT=${{ '{' }}{{ app.module_name }}_frontend_port}
+{%- endfor %}
+export WORKTREE_PATH=${abs_worktree}
+EOF
+
+cat > "$worktree_dir/poetry.toml" <<POETRY
+[virtualenvs]
+in-project = true
+POETRY
+
+echo ""
+echo "Worktree created:"
+echo "  Path:   $abs_worktree"
+echo "  Branch: $branch"
+echo ""
+echo "Port assignments (in .envrc.local):"
+echo "  PGPORT=${pg_port}"
+echo "  MEMCACHED_PORT=${memcached_port}"
+echo "  RABBITMQ_NODE_PORT=${rabbitmq_port}"
+echo "  PC_PORT_NUM=${pc_port}"
+{%- for app in web_apps %}
+echo "  {{ app.module_name.upper() }}_BACKEND_PORT=${{ '{' }}{{ app.module_name }}_backend_port}"
+echo "  {{ app.module_name.upper() }}_FRONTEND_PORT=${{ '{' }}{{ app.module_name }}_frontend_port}"
+{%- endfor %}
+echo ""
+echo "To enter: cd $abs_worktree && direnv allow"

@@ -25,8 +25,17 @@ Kit is a [Copier](https://copier.readthedocs.io/) template for generating full-s
 
 ### Generate a New Project
 
+Kit scaffolds the Python application; the development shell (`flake.nix`) is
+instantiated separately from [`nix-templates`](https://github.com/jessedhillon/nix-templates)
+so the two concerns evolve independently.
+
 ```bash
 copier copy gh:jessedhillon/kit my-project
+cd my-project
+nix flake init -t github:jessedhillon/nix-templates#dev-kit
+direnv allow
+install-hooks
+poetry install --extras dev --extras test
 ```
 
 You'll be prompted for:
@@ -38,8 +47,14 @@ You'll be prompted for:
 | `module_name` | Python module name (snake_case) |
 | `class_prefix` | Class prefix for containers, etc. |
 | `postgresql_port` | PostgreSQL port (default: 5432) |
-| `web_apps` | Web applications to generate |
-| `models` | Initial models to generate |
+| `include_example_app` | Generate an example FastAPI web app |
+| `include_example_model` | Generate an example SQLAlchemy model |
+| `include_llm_scaffold` | LLM provider deps (langchain + anthropic/openai) |
+| `include_streaming` | Redis + pub/sub broker deps |
+| `include_auth` | JWT + bcrypt auth deps |
+| `include_fixtures` | YAML fixture loader deps |
+
+The optional-scaffold flags currently wire dependencies into `pyproject.toml`; full scaffolded code for each is a work in progress.
 
 ### Update an Existing Project
 
@@ -62,7 +77,7 @@ my-project/
 │   ├── model/                 # Pydantic models
 │   ├── storage/               # SQLAlchemy tables and repositories
 │   └── web/{app}/             # FastAPI apps with React frontends
-├── flake.nix                  # Nix devshell + formatters
+├── flake.nix                  # Nix devshell (from nix-templates#dev-kit)
 ├── pyproject.toml             # Poetry project config
 └── process-compose.yaml       # Dev service orchestration
 ```
@@ -79,7 +94,7 @@ direnv allow
 install-hooks
 
 # Start development services
-dev
+stack-up
 ```
 
 ## Template Development

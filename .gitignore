@@ -4,3 +4,7 @@ dist/
 .devenv/
 .state/
 .cache/
+
+# Override global ignore of *.claude for the template scaffold
+!templates/.claude/
+!templates/.claude/**

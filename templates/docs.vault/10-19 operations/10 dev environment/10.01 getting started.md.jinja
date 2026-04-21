@@ -1,0 +1,122 @@
+---
+description: stack setup, database, migrations, pre-commit hooks, tests
+---
+
+# Getting started
+
+How to set up and run the {{ project_name }} dev environment from scratch.
+
+## Prerequisites
+
+- **Nix** with flakes enabled — the devshell provides all tooling (Python, Node, PostgreSQL, etc.)
+- **direnv** — automatically loads the Nix environment when you `cd` into the project
+
+The first time you enter the directory, `direnv` will build the Nix shell (slow), then subsequent entries are cached.
+
+## Environment setup
+
+### Port assignments
+
+Default ports are set in `flake.nix`. Common ones:
+
+| Variable        | Default | Purpose             |
+| --------------- | ------- | ------------------- |
+| `PGPORT`        | 5432    | PostgreSQL          |
+| `PC_PORT_NUM`   | 8080    | process-compose API |
+
+If you need different ports (e.g. multiple worktrees), override them in `.envrc.local`:
+
+```bash
+export PGPORT=5433
+```
+
+### Vault password
+
+Encrypted secrets live in `config/secrets.vault.yaml` (and environment-specific overrides). The Ansible Vault password is prompted once per session and cached in the kernel keyring so subsequent commands don't re-prompt.
+
+## Bringing up the stack
+
+```bash
+stack-up
+```
+
+This runs `process-compose up` which starts the default-enabled services (see `process-compose.yaml` for the full list and per-service defaults).
+
+Dependencies are handled automatically — app services wait for database/cache services to be healthy before starting.
+
+To enable a disabled service:
+
+```bash
+stack-up postgres memcached   # pass service names as args
+```
+
+### Verifying the stack
+
+Once running, the process-compose UI is available at `http://127.0.0.1:$PC_PORT_NUM`. Individual service ports are listed in `process-compose.yaml`.
+
+## Database
+
+### Initial setup
+
+PostgreSQL data lives in `$PGDATA` (set by the Nix devshell, typically `.state/postgres/`). If starting fresh:
+
+```bash
+initdb                                  # create the cluster (only once)
+stack-up                                # start postgres via process-compose
+createdb {{ module_name }}              # create the database
+{{ module_name }}-cli schema up head    # apply all migrations
+```
+
+### Migrations
+
+```bash
+# Check current migration
+{{ module_name }}-cli schema current
+
+# Apply all pending migrations
+{{ module_name }}-cli schema up head
+
+# Rollback one migration
+{{ module_name }}-cli schema down -1
+
+# Create a new migration
+{{ module_name }}-cli schema generate "add users table"
+
+# View migration history
+{{ module_name }}-cli schema history
+```
+
+### Test database
+
+Tests use a separate database configured in `config/env.d/test/storage.yaml`:
+
+```bash
+createdb {{ module_name }}_test
+{{ module_name }}-cli -E test schema up head
+```
+
+## Pre-commit hooks
+
+```bash
+install-hooks
+```
+
+Installs hooks that run on every commit: `nix fmt` (ruff + prettier), `pyright`, `tsc`, `ruff` lint, and conventional commit message validation.
+
+## Running tests
+
+```bash
+# Ensure test DB exists and is migrated
+createdb {{ module_name }}_test 2>/dev/null || true
+{{ module_name }}-cli -E test schema up head
+
+# Run all tests
+poetry run pytest
+
+# Run specific file
+poetry run pytest tests/test_example.py -v
+```
+
+## Next steps
+
+- [[10.02 cli reference]] — full `{{ module_name }}-cli` command reference, shell commands, and common workflows
