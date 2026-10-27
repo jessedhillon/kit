@@ -9,6 +9,8 @@ from .base import BaseSettings
 
 
 class WebSettings(BaseSettings):
+{% if not web_apps %}    pass
+{% endif %}
 {%- for app in web_apps %}
     {{ app.module_name }}: {{ app.class_prefix }}WebSettings
 {%- endfor %}

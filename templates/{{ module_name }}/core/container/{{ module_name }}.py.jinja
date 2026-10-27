@@ -50,6 +50,10 @@ class BootConfiguration(BaseModel):
     override: tuple[str, ...]
 
 
+def load_secrets(env: DeploymentEnvironment, root: p.AnyUrl) -> dict[str, t.Any]:
+    return Secrets(env=env, root=root).model_dump()
+
+
 class {{ class_prefix }}Container(DeclarativeContainer):
     config: Configuration = Configuration()
     secrets: Configuration = Configuration()
@@ -81,6 +85,7 @@ class {{ class_prefix }}Container(DeclarativeContainer):
         secrets_path: p.AnyUrl | None = None,
         override: tuple[str, ...] | None = None,
         wiring: tuple[str | types.ModuleType, ...] | None = None,
+        require_secrets: bool = True,
     ):
         if config_root.scheme != "file":
             raise ValueError(f"unsupported scheme for config root: {config_root.scheme}")
@@ -118,12 +123,12 @@ class {{ class_prefix }}Container(DeclarativeContainer):
         if debug:
             ct.logging().capture_warnings(True)
 
-        if secrets_path is None and env is not DeploymentEnvironment.Local:
+        file_based_envs = {DeploymentEnvironment.Local, DeploymentEnvironment.Test}
+        if secrets_path is None and env not in file_based_envs:
             secrets_path = p.AnyUrl(f"aws:///{env.value}/secrets")
-            secrets = Secrets(env=env, root=secrets_path or config_root)
-        else:
-            secrets = Secrets(env=env, root=secrets_path or config_root)
-        ct.secrets.from_pydantic(secrets)
+        ct.secrets.override(Singleton(load_secrets, env=env, root=secrets_path or config_root))
+        if require_secrets:
+            ct.secrets()
 
         logger.debug(
             "configuration finished",

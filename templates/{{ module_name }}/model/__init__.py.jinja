@@ -9,5 +9,5 @@ __all__ = [
 
 from .base import BaseModel
 from .enum import DeploymentEnvironment
-from .id import {% for model in models %}{{ model.class_name }}ID{{ '' if loop.last else ',' }}{% endfor %}
+{% if models %}from .id import {% for model in models %}{{ model.class_name }}ID{{ '' if loop.last else ',' }}{% endfor %}{% endif %}
 {% for model in models %}from .{{ model.table_name }} import {{ model.class_name }}{% endfor %}

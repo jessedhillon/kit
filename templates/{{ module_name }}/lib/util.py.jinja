@@ -1,3 +1,5 @@
+import os
+import re
 import shutil
 import subprocess
 import typing as t
@@ -59,3 +61,36 @@ def notify(title: str, text: str, icon: str):
         return
     n = Notify.Notification.new(title, text, icon)  # pyright: ignore [reportUnknownVariableType]
     n.show()
+
+
+# Matches ${VAR}, ${VAR:-default}, and $VAR. Defaults may contain any non-brace
+# characters (including colons) so shapes like ${FOO:-file:///path} work.
+_env_var_pattern = re.compile(r"\$(?:\{([^}]*)\}|(\w+))")
+
+
+def expand_env_vars(text: str) -> str:
+    """Expand ${VAR}, ${VAR:-default}, and $VAR references from the environment.
+
+    - `${VAR}` and `$VAR`: resolve to the environment value, or leave the
+      reference literal if the variable is unset. (Leaving unexpanded refs
+      visible surfaces missing-env errors during config validation rather
+      than silently substituting empty strings.)
+    - `${VAR:-default}`: resolve to the environment value if set and non-empty
+      is NOT required (see note), otherwise to `default`. Empty default is
+      allowed: `${VAR:-}` → "".
+
+    Note: unlike bash, the `:-` operator here only checks "is the variable
+    set?"; empty env values still take precedence over the default (matching
+    the simpler POSIX `-` form). Upgrade to `:-` vs `-` semantics if needed.
+    """
+
+    def _replace(match: re.Match[str]) -> str:
+        braced, bare = match.groups()
+        if braced is not None:
+            name, sep, default = braced.partition(":-")
+            if sep:
+                return os.environ.get(name, default)
+            return os.environ.get(name, match.group(0))
+        return os.environ.get(bare, match.group(0))
+
+    return _env_var_pattern.sub(_replace, text)

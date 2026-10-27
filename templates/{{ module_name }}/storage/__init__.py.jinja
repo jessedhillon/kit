@@ -14,6 +14,7 @@ __all__ = [
 ]
 
 if t.TYPE_CHECKING:
+    pass
 {%- for model in models %}
     from . import {{ model.table_name }}
 {%- endfor %}

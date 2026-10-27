@@ -1,5 +1,6 @@
 import functools
 import getpass
+import os
 import typing as t
 from pathlib import Path
 
@@ -76,6 +77,8 @@ class OverrideSettingsSource(SettingsSource):
                 merged = util.deep_update(t.cast(dict[t.Any, t.Any], val), self.parsed_options[field_name])
                 return merged, field_name, True
             return self.parsed_options[field_name], field_name, False
+        if field_name not in current_state:
+            raise KeyError(field_name)
         return val, field_name, False
 
     def prepare_field_value(
@@ -118,7 +121,7 @@ class YAMLCascadingSettingsSource(SettingsSource):
         if not isinstance(value, list):
             raise ValueError(field_name)
         yamls = t.cast(list[str], value)
-        return yaml.safe_load(yamls[-1])
+        return yaml.safe_load(util.expand_env_vars(yamls[-1]))
 
 
 class AnsibleVaultSecretsSource(SettingsSource):
@@ -145,7 +148,7 @@ class AnsibleVaultSecretsSource(SettingsSource):
         if not vp.exists():
             return {}
 
-        key_name = f"{env.value}:{fn}"
+        key_name = f"{os.environ.get('VAULT_KEY_PREFIX', '{{ module_name }}')}/{env.value}:{fn}"
         try:
             store_key: bool = False
             k = keyctl.search(key_name)
@@ -164,14 +167,9 @@ class AnsibleVaultSecretsSource(SettingsSource):
             return yaml.safe_load(content)
 
     def get_field_value(self, field: p.fields.FieldInfo, field_name: str) -> tuple[t.Any, str, bool]:
-        skip_keys = {"env", "root", "override"}
-        val = self.secrets.get(field_name)
-        if field_name in self.secrets and field_name not in skip_keys:
-            if isinstance(val, dict):
-                merged = util.deep_update(t.cast(dict[t.Any, t.Any], val), self.secrets[field_name])
-                return merged, field_name, True
-            return self.secrets[field_name], field_name, False
-        return val, field_name, False
+        if field_name in {"env", "root", "override"} or field_name not in self.secrets:
+            raise KeyError(field_name)
+        return self.secrets[field_name], field_name, False
 
     def prepare_field_value(
         self, field_name: str, field: p.fields.FieldInfo, value: t.Any, value_is_complex: bool

@@ -3,13 +3,13 @@ from __future__ import annotations
 import typing as t
 import urllib.parse
 
-import google.oauth2.service_account
-import googleapiclient.discovery
 import pydantic as p
 from dependency_injector.containers import DeclarativeContainer
 from dependency_injector.providers import Configuration, Container, Provider, Singleton
 
 if t.TYPE_CHECKING:
+    import google.oauth2.service_account
+    import googleapiclient.discovery
     from googleapiclient._apis.sheets.v4 import SheetsResource  # pyright: ignore [reportMissingModuleSource]
 
 
@@ -57,6 +57,8 @@ class GoogleContainer(DeclarativeContainer):
         service_name: t.Literal["sheets"] | str,
         service_version: str,
     ) -> googleapiclient.discovery.Resource:
+        import googleapiclient.discovery
+
         service = googleapiclient.discovery.build(service_name, service_version, credentials=credentials)
         match service_name:
             case "sheets":

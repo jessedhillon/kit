@@ -24,9 +24,9 @@ class Settings(BaseSettings, BaseModel):  # pyright: ignore [reportIncompatibleV
 
     logging: LoggingSettings = SettingsField
     storage: StorageSettings = SettingsField
-    template: TemplateSettings = SettingsField
-    vendor: VendorSettings = SettingsField
-    web: WebSettings = SettingsField
+    template: TemplateSettings | None = None
+    vendor: VendorSettings | None = None
+    web: WebSettings | None = None
 
     @classmethod
     def settings_customise_sources(

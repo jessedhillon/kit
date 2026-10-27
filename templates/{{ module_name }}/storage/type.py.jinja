@@ -23,7 +23,7 @@ class ShortUUIDKeyType(TypeDecorator[ShortUUIDKey]):
 
     def process_result_value(self, value: str | None, dialect: Dialect) -> ShortUUIDKey | None:
         if value is not None:
-            value = self.key_type(key=value)
+            value = self.key_type.unsafe(value)
         return value
 
 

@@ -202,7 +202,7 @@ Custom `ShortUUIDKey` for prefixed, readable IDs:
 class UserID(ShortUUIDKey, prefix="user"):
     pass
 
-# Creates IDs like: user$7Bj3KpVxMnQwRtYz2sLa
+# Creates IDs like: user.7Bj3KpVxMnQwRtYz2sLa
 user_id = UserID()           # Generate new
 user_id = UserID(key="...")  # From existing key
 ```
@@ -400,20 +400,89 @@ class users(base):
 
 ## FastAPI routes
 
+### IDs in URLs are unprefixed
+
+URLs use the key value only — `/clients/foobar`, never `/clients/clnt.foobar`. See **Identity keys → REST URL exception** above for the rule and rationale. The rest of this section covers the FastAPI-specific mechanics for closing the rehydration loop.
+
+### Two layers of dependencies
+
+Each web app has a `predicate.py` module (or equivalent) that provides two layers of FastAPI dependencies:
+
+**1. Parameter converters** — turn the raw URL/query string into the typed ID:
+
 ```python
-@router.get("/users/{user_id}")
-@di.inject
-def get_user(
-    user_id: UserID,
-    session: Manage[Session] = di.Provide["storage.persistent.session"],
-) -> UserResponse:
-    user = session.get(User, user_id)
-    if not user:
-        raise HTTPException(404, "User not found")
-    return UserResponse.model_validate(user)
+# {{ module_name }}/web/<app>/predicate.py
+
+def _parse_client_id(client_id: t.Annotated[str, Path()]) -> ClientID:
+    try:
+        return ClientID(key=client_id)
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=422, detail="invalid client_id") from None
+
+
+ClientIdParam = t.Annotated[ClientID, Depends(_parse_client_id)]
 ```
 
-Note that the route method is prefixed with its general CRUD operation type (`get` here) and not suffixed with `_route` (its status as a route is expressed by the decorator and by its location in the filesystem).
+Bad-format inputs surface as `422` from the dep, not from the route body.
+
+**2. Resource loaders** — load the entity from the DB and verify preconditions:
+
+```python
+def _get_client(
+    client_id: ClientIdParam,
+    session: Session = Depends(di.Provide["storage.persistent.session"]),
+) -> Client:
+    with session.begin():
+        client = storage.client.get(client_id=client_id, session=session)
+    if client is None:
+        raise HTTPException(status_code=404, detail="client not found")
+    return client
+
+
+RegisteredClient = t.Annotated[Client, Depends(_get_client)]
+```
+
+Unknown resource → `404` from the dep. Semantic mismatch (e.g. `redirect_uri` not in the client's registered list) → `422` from a further dep that takes the loaded model.
+
+### Route bodies are for execution, not validation
+
+The route handler stays focused on the **execution** of the route's purpose — the happy path, the side-effect, the response construction. All pre-req validation and resource loading is factored into dependencies.
+
+```python
+@router.get("/authorize")
+@di.inject
+def get_authorize(
+    client: RegisteredClient,
+    redirect_uri: RegisteredRedirectUri,
+    scopes: ValidatedScopes,
+    state: t.Annotated[str, Query(min_length=1)],
+    session: Session = Depends(di.Provide["storage.persistent.session"]),
+) -> RedirectResponse:
+    # All pre-reqs validated by deps. Body is just the effect + response.
+    with session.begin():
+        record = storage.auth_session.create(...)
+    return RedirectResponse(url=..., status_code=302)
+```
+
+### Error surfacing
+
+- **Route-blocking errors** — `422` (validation / malformed input), `404` (resource missing), `409` (conflict), `401` / `403` (auth) — always surface from a **dependency**. The client should know its input is bad before the route body even runs.
+- **Execution errors** — raised from the route body when something goes wrong during the work the route is there to do. Things like third-party API failures, state transitions that can only be detected mid-flight.
+- Use standard HTTP status codes and FastAPI's default validation body shape. Only hand-roll a custom error body when an external protocol (e.g. OAuth's `{error, error_description}` response for after-redirect errors) explicitly requires one.
+
+### Naming
+
+Route handler methods are prefixed with their CRUD operation (`get`, `post`, `put`, `delete`, `patch`) and **not** suffixed with `_route` — the route nature is expressed by the decorator and the file location:
+
+```python
+# Good
+@router.get("/clients/{client_key}")
+def get_client(client: RegisteredClient) -> ClientResponse: ...
+
+# Bad
+@router.get("/clients/{client_key}")
+def get_client_route(...) -> ClientResponse: ...
+```
 
 ## Module and package structure
 
@@ -457,7 +526,7 @@ from {{ module_name }}.service.user.service import UserService
 import { client } from './api/sdk.gen';
 import { User } from './api/types.gen';
 
-const user = await client.getUser({ userId: 'user$...' });
+const user = await client.getUser({ userId: 'user....' });
 ```
 {% endraw %}
 
