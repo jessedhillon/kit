@@ -84,6 +84,16 @@ include_fixtures:
   help: Include YAML fixture loader for test/demo data?
   default: false
 
+include_session_journal:
+  type: bool
+  help: Include opt-in LLM session-journal extraction and its PreCompact hook?
+  default: false
+
+include_tunnels:
+  type: bool
+  help: Include a vault-backed Cloudflare Tunnel command?
+  default: false
+
 # Computed values (not prompted)
 web_apps:
   type: yaml

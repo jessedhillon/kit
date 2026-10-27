@@ -1,0 +1,249 @@
+"""Extract key exchanges from a Claude Code session transcript.
+
+Reads a session transcript JSONL file, sends it to Claude Sonnet for extraction
+of decisions, learnings, action items, and key exchanges, and appends/writes the
+result to the session journal in docs.vault.
+
+Designed to be wired as a Claude Code PreCompact hook (see `.claude/settings.json`).
+The hook event JSON is received on stdin; `session_id` is extracted from that if
+`--session-id` isn't passed explicitly.
+
+Usage:
+    {{ module_name }}-cli script extract-session-journal --session-id=UUID [--project-root=PATH]
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import subprocess
+import sys
+import typing as t
+from datetime import datetime, timezone
+from pathlib import Path
+
+import pydantic as p
+
+import {{ module_name }}.lib.cli as click
+from {{ module_name }}.core import di
+from {{ module_name }}.core.provider import LoggingProvider
+
+extraction_prompt = """\
+You are reviewing a Claude Code session transcript. Your output MUST be a \
+structured markdown document using ONLY the section headings below. Do NOT \
+write prose, narrative summaries, or free-form paragraphs. Every piece of \
+information must go under one of these headings as a bullet point.
+
+## Decisions
+Architectural, design, or process decisions made during this session. Include \
+the rationale if discussed. Each bullet: what was decided and why.
+
+## Learnings
+New information discovered about the codebase, tools, APIs, or domain. Things \
+that weren't known before and would be useful to remember. Each bullet: what \
+was learned and where/how it came up.
+
+## Action Items
+Tasks identified but not completed, things to follow up on, or deferred work. \
+Each bullet: what needs to be done and any relevant context.
+
+## Key Exchanges
+Important back-and-forth between the user and assistant that shaped the \
+direction of work. Each bullet: a one-sentence summary of the exchange and \
+its outcome.
+
+Rules:
+- ONLY use the four headings above — no other headings, no introduction, no \
+conclusion
+- Every entry is a bullet point (`- `), not a paragraph
+- Be concise — one to two lines per bullet
+- Skip routine tool calls, mechanical code edits, and formatting changes
+- Focus on the *why* behind changes, not the *what*
+- If a section has no entries, omit it entirely
+- Do not include a title heading — the caller adds metadata
+- Extract ONLY from the transcript shown. Never continue, infer, or invent \
+additional turns, decisions, or exchanges that aren't in the transcript. \
+If the transcript ends mid-message, ignore the incomplete tail.
+"""
+
+compaction_marker = "this session is being continued from a previous conversation"
+
+# Sonnet request caps — the extractor runs at hook time and shouldn't be surprised by
+# a huge transcript. Cut off very old context (least useful) and bound output length.
+_max_conversation_chars = 150_000
+_max_response_tokens = 4096
+_sonnet_model = os.environ.get("JOURNAL_MODEL", "claude-sonnet-4-20250514")
+
+
+def find_transcript(project_root: Path, session_id: str) -> Path | None:
+    """Find the transcript JSONL file for a session."""
+    # The Claude Code state dir uses the cwd slug: absolute path with slashes and
+    # dots replaced by hyphens, prefixed with a leading hyphen.
+    project_slug = "-" + str(project_root).strip("/").replace("/", "-").replace(".", "-")
+    state_dir = project_root / ".state" / "claude" / "projects" / project_slug
+    transcript = state_dir / f"{session_id}.jsonl"
+    if transcript.exists():
+        return transcript
+    return None
+
+
+def extract_conversation(transcript_path: Path) -> str:
+    """Extract human-readable conversation from the current context window.
+
+    Only includes messages after the last compaction boundary. Compaction boundaries
+    are identified by the "continued from a previous conversation" marker that
+    Claude Code injects after context compression.
+    """
+    messages: list[str] = []
+    with open(transcript_path, errors="replace") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                record: dict[str, t.Any] = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            rtype = record.get("type")
+
+            if rtype == "user" and not record.get("isMeta"):
+                msg: dict[str, t.Any] = record.get("message", {})
+                content = msg.get("content", "")
+                if isinstance(content, str) and content.strip():
+                    text = content.strip()
+                    # reset on compaction boundary — only keep current window
+                    if compaction_marker in text.lower():
+                        messages.clear()
+                        continue
+                    if "<command-name>" in text:
+                        continue
+                    messages.append(f"**User**: {text}")
+
+            elif rtype == "assistant":
+                msg = record.get("message", {})
+                content_blocks: list[dict[str, t.Any]] = msg.get("content", [])
+                for block in content_blocks:
+                    if block.get("type") == "text":
+                        text = str(block.get("text", "")).strip()
+                        if text:
+                            messages.append(f"**Assistant**: {text}")
+
+    return "\n\n".join(messages)
+
+
+def call_sonnet(api_key: str, conversation: str) -> str:
+    """Send conversation to Sonnet for extraction."""
+    import anthropic
+
+    client = anthropic.Anthropic(api_key=api_key)
+    if len(conversation) > _max_conversation_chars:
+        conversation = "[... earlier exchanges truncated ...]\n\n" + conversation[-_max_conversation_chars:]
+
+    response = client.messages.create(
+        model=_sonnet_model,
+        max_tokens=_max_response_tokens,
+        messages=[
+            {
+                "role": "user",
+                "content": f"{extraction_prompt}\n\n---\n\n{conversation}",
+            }
+        ],
+    )
+    result: list[str] = []
+    for block in response.content:
+        if hasattr(block, "text"):
+            result.append(t.cast(t.Any, block).text)
+    return "\n".join(result)
+
+
+def get_git_branch(project_root: Path) -> str | None:
+    """Get the current git branch name."""
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            capture_output=True,
+            text=True,
+            cwd=str(project_root),
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()
+    except Exception:
+        pass
+    return None
+
+
+def _read_session_id_from_stdin() -> str | None:
+    """Read session_id from hook event JSON on stdin."""
+    try:
+        event = json.load(sys.stdin)
+        return event.get("session_id")  # type: ignore[no-any-return]
+    except (json.JSONDecodeError, EOFError, ValueError):
+        return None
+
+
+@click.command()
+@click.option("--session-id", default=None, help="Claude Code session ID (reads from stdin if omitted)")
+@click.option(
+    "--project-root",
+    type=click.Path(exists=True, path_type=Path),
+    default=None,
+    help="Project root (defaults to cwd)",
+)
+@di.inject
+def execute(
+    session_id: str | None,
+    project_root: Path | None,
+    anthropic_api_key: p.Secret[str] = di.Provide["secrets.anthropic.api_key"],
+    logging: LoggingProvider = di.Provide["logging"],
+):
+    """Extract session journal from a Claude Code transcript."""
+    logger = logging.get_logger()
+
+    if session_id is None:
+        session_id = _read_session_id_from_stdin()
+    if not session_id:
+        logger.warning("no session_id provided (pass --session-id or pipe hook JSON on stdin)")
+        return
+
+    prj_root = project_root or Path.cwd()
+    journal_dir = prj_root / "docs.vault" / "10-19 operations" / "12 session journal"
+
+    transcript_path = find_transcript(prj_root, session_id)
+    if not transcript_path:
+        logger.warning("transcript not found", extra={"session_id": session_id})
+        return
+
+    conversation = extract_conversation(transcript_path)
+    if not conversation.strip():
+        logger.info("empty conversation, skipping", extra={"session_id": session_id})
+        return
+
+    logger.info("extracting session journal", extra={"session_id": session_id})
+    content = call_sonnet(anthropic_api_key.get_secret_value(), conversation)
+
+    journal_dir.mkdir(parents=True, exist_ok=True)
+    date_str = datetime.now(tz=timezone.utc).strftime("%Y-%m-%d")
+    short_id = session_id[:8]
+    branch = get_git_branch(prj_root)
+    branch_line = f"\nbranch: {branch}" if branch else ""
+
+    filepath = journal_dir / f"{date_str}_{short_id}.md"
+    if filepath.exists():
+        # agent already created the file — append hook extraction
+        filepath.write_text(
+            filepath.read_text().rstrip("\n") + "\n\n---\n\n*Extracted by PreCompact hook:*\n\n" + content + "\n"
+        )
+        logger.info(
+            "appended to existing session journal",
+            extra={"path": str(filepath.relative_to(prj_root))},
+        )
+    else:
+        filepath.write_text(
+            f"---\n"
+            f"description: session journal — {date_str} ({short_id})\n"
+            f"session_id: {session_id}\n"
+            f"date: {date_str}{branch_line}\n"
+            f"---\n\n"
+            f"{content}\n"
+        )
+        logger.info("session journal written", extra={"path": str(filepath.relative_to(prj_root))})

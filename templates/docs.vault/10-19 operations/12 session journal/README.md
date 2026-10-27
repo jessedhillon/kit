@@ -48,3 +48,9 @@ Omit empty sections.
 - Keep entries terse; a bullet should fit on one line where possible.
 - The journal is not a diary — it's a handoff document for the next agent (or the same one after a compaction). Focus on things a future reader would need to know.
 - A `PreCompact` hook may run before context compaction and append additional findings from the transcript.
+
+## Scope and orphaned changes
+
+Journals and vault updates are always in scope for the current change. Capture
+durable decisions promptly and review orphaned documentation changes from earlier
+sessions before including them. Explain their inclusion in the review description.

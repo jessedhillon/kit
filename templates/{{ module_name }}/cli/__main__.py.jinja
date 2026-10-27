@@ -22,7 +22,7 @@ _wiring: list[types.ModuleType] = []
 
 class {{ class_prefix }}MultiCommand(click.Group):
     def list_commands(self, ctx: click.Context) -> t.List[str]:
-        return ["example", "schema", "script", "web"]
+        return ["example", "schema", "script", "web"{% if include_tunnels %}, "tunnel"{% endif %}]
 
     def get_command(self, ctx: click.Context, cmd_name: str) -> click.Group:
         global _wiring
@@ -43,6 +43,7 @@ class {{ class_prefix }}MultiCommand(click.Group):
     help="configuration path parameter-value pairs to override config with, e.g., -o sync.socket.type=fifo",
 )
 @click.option("-D", "--debug", is_flag=True, default=False)
+@click.option("--secrets/--no-secrets", "require_secrets", default=True, help="Validate secrets at boot or defer until first use.")
 @click.pass_obj
 @di.inject
 def main(
@@ -52,6 +53,7 @@ def main(
     secrets_path: p.AnyUrl | None,
     override: tuple[str, ...],
     debug: bool,
+    require_secrets: bool,
 ):
     global _configured, _wiring
     {{ class_prefix }}Container.boot(
@@ -62,6 +64,7 @@ def main(
         secrets_path=secrets_path,
         override=override,
         wiring=tuple(_wiring),
+        require_secrets=require_secrets,
     )
     _configured = True
 

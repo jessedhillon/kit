@@ -1,0 +1,58 @@
+---
+description: concise weekly status retro instructions
+---
+
+# Weekly retro ritual
+
+First analyze the requested period using commits and project evidence. Then prepare a concise status summary for {{ project_name }} covering product progress, launch and onboarding learnings, traction signals, major decisions, blockers, and next priorities. Highlight material changes and separate evidence from open questions.
+
+Write for a non-technical, minimally versed reader: a spouse, investor, or advisor who understands the business but does not know our implementation history.
+
+When the authoring agent has only been close to implementation work, narrow the scope accordingly. Product progress, launch posture, and onboarding learnings are usually enough; marketing can handle traction signals when it has the better context.
+
+## Rules
+
+- Constrain the relevance window to the dates requested by the user. Do not include older work just because it is salient or recently discussed.
+- Verify the window before writing. Use `git log --since=<date>` and, when relevant, Linear issue history or project state.
+- Keep the output short: roughly three-quarters of a page. Apply a high relevance threshold: include only changes that materially affect launch posture, product correctness, measurement quality, current risk, or the next decisions the project needs to make.
+- Use only one-sentence bullets; each bullet should make the whole point sharply, without a follow-on explanation paragraph.
+- Avoid implementation archaeology, project-code references, and tool names unless they materially change the business read.
+- The document heading should be only the filing date, e.g. `# September 25, 2026`.
+- Open with `## Operational fixes` when the week was primarily implementation / launch-hardening work.
+- Prefer concise bold bullets, e.g. `- **The onboarding flow now tests whether visitors complete the first step.**`
+
+- Distinguish:
+  - **Evidence**: commits, deployed behavior, tested user flows, observed failures, explicit decisions.
+  - **Open questions**: plausible interpretations, risks, and next things to learn.
+- Include a short `## Glossary` at the end when jargon is unavoidable. Link the first occurrence of those terms to the glossary using same-document Obsidian links, e.g. `[[#ECS|ECS]]`, and format entries as `- **term** definition`.
+- Prefer status and implications over exhaustive chronology. Avoid listing every shipped feature, config correction, or PR unless it changes how we launch, measure, operate, or de-risk the product.
+- If the user asks for a draft first, provide the concise answer in chat before writing the vault document.
+
+## File Pattern
+
+Write a dated retro for each requested run. Do not schedule recurring work unless requested.
+
+Write dated retros under:
+
+```text
+docs.vault/10-19 operations/14 retros/14.01 retros/
+```
+
+Use the next tertiary number:
+
+```text
+14.01.NN YYYY-MM-DD.md
+```
+
+Include YAML frontmatter with a `description` field.
+
+## Maintenance
+
+After adding or renaming a vault document, run:
+
+```bash
+python3 scripts/generate-vault-index.py
+python3 scripts/generate-claude-md.py
+```
+
+Do not fold unrelated working tree changes into the retro branch.

@@ -1,0 +1,90 @@
+"""Cloudflare Tunnel wrapper.
+
+Loads the named tunnel's secrets from the vault and execs `cloudflared tunnel
+run (using TUNNEL_TOKEN)` with stdio inherited. The point is so nobody types or
+exports the token by hand — `{{ module_name }}-cli tunnel run <name>` is the one path
+that touches it.
+
+Usable two ways:
+
+  1. Standalone: `{{ module_name }}-cli tunnel run example` from a shell.
+  2. Process-compose: see `process-compose.yaml` for a `tunnel-example`
+     entry (disabled by default; enable when you need the tunnel up).
+"""
+
+from __future__ import annotations
+
+import os
+import signal
+import subprocess
+import sys
+import typing as t
+
+import pydantic as p
+
+import {{ module_name }}.lib.cli as click
+from {{ module_name }}.core import di
+
+
+@click.group("tunnel")
+def tunnel(): ...
+
+
+def attr_value(obj: t.Any, key: str) -> t.Any:
+    if obj is None:
+        return None
+    if isinstance(obj, dict):
+        return t.cast(dict[str, t.Any], obj).get(key)
+    return getattr(obj, key, None)
+
+
+def resolve_tunnel_config(cloudflare_secrets: t.Any, name: str) -> t.Any:
+    tunnels: t.Any = attr_value(cloudflare_secrets, "tunnels")
+    return attr_value(tunnels, name)
+
+
+@tunnel.command("run")
+@click.argument("name")
+@di.inject
+def run(
+    name: str,
+    cloudflare_secrets: t.Any = di.Provide["secrets.cloudflare"],
+):
+    """Run a Cloudflare tunnel by its vault name.
+
+    Looks up `secrets.cloudflare.tunnels.<name>.{token,hostname}` and execs
+    `cloudflared tunnel run (using TUNNEL_TOKEN)`. Inherits stdio so logs flow
+    through and Ctrl-C terminates the tunnel cleanly.
+    """
+
+    cfg = resolve_tunnel_config(cloudflare_secrets, name)
+    if cfg is None:
+        click.echo(f"no Cloudflare tunnel config found for '{name}'; skipping", err=True)
+        return
+
+    token: t.Any = attr_value(cfg, "token")
+    token_value: str = t.cast(p.Secret[str], token).get_secret_value() if isinstance(token, p.Secret) else str(token)
+    hostname: t.Any = attr_value(cfg, "hostname")
+    click.echo(f"starting cloudflared for tunnel '{name}' (public hostname: {hostname})", err=True)
+
+    # Inherit stdin/stdout/stderr so logs stream through and signals propagate.
+    # Pass token via env to keep it out of /proc/<pid>/cmdline.
+    env: dict[str, str] = {**os.environ, "TUNNEL_TOKEN": token_value}
+    proc = subprocess.Popen(
+        ["cloudflared", "tunnel", "run"],
+        stdin=sys.stdin,
+        stdout=sys.stdout,
+        stderr=sys.stderr,
+        env=env,
+    )
+
+    def _forward(signum: int, _frame: object):
+        proc.send_signal(signum)
+
+    signal.signal(signal.SIGINT, _forward)
+    signal.signal(signal.SIGTERM, _forward)
+
+    sys.exit(proc.wait())
+
+
+command = tunnel

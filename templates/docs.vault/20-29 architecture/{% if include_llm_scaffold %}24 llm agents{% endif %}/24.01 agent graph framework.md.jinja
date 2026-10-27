@@ -1,0 +1,233 @@
+---
+description: BaseAgent graph topology, extension points, and the langgraph state-update concurrency rule
+---
+
+# Agent graph framework
+
+All LLM agent interactions in {{ module_name }} use a shared graph framework built on LangGraph. `BaseAgent` defines the common graph topology and extension points; most subclasses customize behavior by overriding hooks rather than rewiring the graph. Product-specific agents may override graph wiring when they need explicit phase boundaries, but should keep node names stable and reuse the base lifecycle nodes where possible.
+
+The skeleton keeps generic graph lifecycle code separate from project-specific tools and state.
+
+## Graph topology
+
+```
+start → status → observe → model → tool → status → ... → end
+```
+
+The graph is wired in `_wire_graph()` with scoped node names (e.g. `"oauth.start"`, `"oauth.model"`). Conditional routing after the model node checks for tool calls; after the tool node, checks the exit predicate.
+
+Each turn:
+
+1. **status** — calls `update_status(state)`, returns `{"status": SystemMessage(...)}`
+2. **observe** — optionally compresses old messages when the token threshold is exceeded
+3. **model** — invokes the LLM with `[system_prompt] + [observations] + history + [status]`
+4. **tool** — executes any tool calls from model output
+5. **exit check** — calls `exit(state)` to decide whether to loop or end
+
+## Extension points
+
+Subclasses override these to define agent behavior:
+
+| Method                       | Purpose                                                        | Required |
+| ---------------------------- | -------------------------------------------------------------- | -------- |
+| `system_prompt(state)`       | Static system message                                          | yes      |
+| `update_status(state)`       | Dynamic per-turn status (progress, current page, etc.)         | no       |
+| `exit(state)`                | Termination predicate (default: `state.completed`)             | no       |
+| `tool_list(state)`           | Available tools (defaults to `self.tools` dict)                | no       |
+| `before_work(state)`         | Hook at start of graph execution                               | no       |
+| `after_work(state)`          | Hook at end of graph execution                                 | no       |
+| `observe_threshold_tokens()` | Token count triggering message compression (`None` = disabled) | no       |
+| `observe_keep_recent()`      | Messages to preserve during observation                        | no       |
+| `observer_system_prompt()`   | Override prompt used by the observer model                     | no       |
+| `_provide_model()`           | DI hook for selecting the chat model                           | no       |
+
+## AgentState
+
+Base state class (`{{ module_name }}/llm/agent/state.py`):
+
+- `messages: list[BaseMessage]` — annotated with `add_messages` reducer for accumulation
+- `status: BaseMessage | None` — ephemeral, rebuilt each turn before model invocation
+- `completed: bool` property — override in subclasses to signal termination
+
+Subclasses extend `AgentState` with domain-specific fields. **Any state key that tools can write must have a reducer** — see `{{ module_name }}/llm/agent/CLAUDE.md` for the concurrency rule (this is a load-bearing detail, not optional).
+
+## Compilation and execution
+
+```python
+agent = OAuthDriverAgent()
+graph = agent.compile()
+
+# Stream execution
+async for event in graph.astream_events(input_state, config=config, version="v2"):
+    ...
+
+# Or invoke directly
+result = await graph.ainvoke(input_state, config=config)
+```
+
+The compiled graph holds all state. Adapters (e.g. observation emitters, browser bridges) are stateless — they stream events from the graph and react to them.
+
+## Model selection via DI
+
+`BaseAgent.model` delegates to `_provide_model()`, which by default looks up `di.Provide["llm.dialogue_model"]`. Subclasses can override `_provide_model()` to inject a different keyed model:
+
+```python
+class OAuthNavigatorAgent(BaseAgent[OAuthState]):
+    @di.inject
+    def _provide_model(
+        self,
+        model: BaseChatModel = di.Provide["llm.sync_navigator_model"],
+    ) -> BaseChatModel:
+        return model
+```
+
+Configure a project-specific provider at `llm.dialogue_model`, or override `_provide_model()` in the agent subclass. The optional skeleton does not select or call a model automatically.
+
+## Design decisions
+
+- **Default topology**: Most agents share the same graph shape. Behavioral differences come from prompt, status, and tools. Agents that need separate internal and user-visible phases, such as the chat financial-intake flow, may override graph wiring while preserving scoped node names and base lifecycle semantics.
+- **Status is ephemeral**: Rebuilt each turn, not persisted in message history. Keeps context fresh without accumulating stale state.
+- **Tool-based structured output**: Agents communicate structured data through tool calls with Pydantic validation, not free-form text parsing.
+- **Async-first**: Graph nodes are async; subclass hooks may return either dicts or coroutines. Matches socratic's stream-friendly orientation.
+- **Observation compression as a graph node**: When conversations grow long, the observe node compresses older messages into a `<observations>` block on state. Disabled by default; opt in by overriding `observe_threshold_tokens()`.
+
+## Structured output agents
+
+Agents whose terminal state is expected to be structured must submit that state
+through a terminal tool whose argument schema is the same Pydantic model the
+application validates.
+
+The forbidden pattern is:
+
+1. Tell the model "produce JSON" and paste an example into the prompt.
+2. Let the model emit raw text that looks like JSON.
+3. Parse that text afterward with a strict Pydantic schema the model never saw.
+
+That design is not acceptable in {{ module_name }}. It hides the real schema from the model
+at the exact moment the model needs it most. Enum values drift, field names drift,
+balance-kind payloads drift, and validation failures become product failures or
+silent no-ops. This failure mode is predictable and should be caught at design
+time, not discovered through manual checkout.
+
+The required pattern is:
+
+1. Define the terminal output as a Pydantic model with `Field(description=...)`
+   on every model-facing argument.
+2. Expose that model to the agent as a `StructuredTool` terminal tool, e.g.
+   `submit_statement_intake` or `submit_chat_intake`.
+3. Instruct the agent to call the terminal tool exactly once when it is done.
+   If there is no data to report, it still calls the tool with the empty/negative
+   shape defined by the schema.
+4. Route terminal-tool calls to a dedicated graph node that validates the tool
+   arguments with the same Pydantic model used by application code.
+5. If validation fails, append a `ToolMessage` with the validation error and loop
+   back to the model for a bounded number of retries. Do not silently discard the
+   output.
+6. If the model refuses to call the terminal tool after the retry budget, fail
+   visibly and record the parse/validation error for debugging.
+
+Do not add another "JSON in prose" structured-output agent. If provider-native
+structured output becomes reliable enough to replace terminal tools, that should
+be a project-wide architecture decision documented here first.
+
+## State update concurrency: the single most important rule
+
+**Every state key that can be written by a tool MUST have a reducer.**
+
+LangGraph executes tool calls from a single LLM response **in parallel**. If two tool calls both return `Command(update={"some_key": ...})` and `some_key` is a plain field (no `Annotated` reducer), LangGraph raises `INVALID_CONCURRENT_GRAPH_UPDATE` — the graph crashes mid-conversation and the session is unrecoverable.
+
+This is not a theoretical concern. It is a **production-breaking bug** that manifests nondeterministically (only when the LLM happens to emit concurrent tool calls that touch the same key), making it especially dangerous: it passes local testing and then fails under real traffic. People have been fired for shipping this class of bug — treat it with the seriousness it deserves.
+
+### What goes wrong
+
+```python
+# BAD: plain field, no reducer — concurrent writes crash
+class MyState(TypedDict):
+    plan: Plan | None
+
+# Two tools both update `plan` in the same step → INVALID_CONCURRENT_GRAPH_UPDATE
+def tool_a(...) -> Command:
+    return Command(update={"plan": modified_plan})
+
+def tool_b(...) -> Command:
+    return Command(update={"plan": other_modified_plan})
+```
+
+### How to fix it
+
+Use `Annotated[T, reducer_fn]` for any key that tools can write. The reducer receives the old value and the new value and must return the merged result.
+
+**The reducer must actually merge the concurrent updates.** "Last-write-wins" is almost never correct — if tool A marks criterion X as explored and tool B adds a drilldown to criterion Y, discarding either update is a data loss bug. The reducer must diff what each tool changed against the base state and apply both modifications.
+
+```python
+from typing import Annotated
+
+def reduce_plan(current: Plan | None, update: Plan | None) -> Plan | None:
+    """Merge reducer for the assessment plan.
+
+    Both mark_explored and add_drilldown may fire in the same step.
+    Each reads the current plan via InjectedState, modifies one field
+    on one criterion, and returns the full plan. When both run
+    concurrently, the reducer must detect what each changed and apply
+    both changes to produce the correct merged result.
+
+    DO NOT use last-write-wins here — it silently discards one tool's
+    work and produces a plan that is missing updates.
+    """
+    if update is None:
+        return current
+    if current is None:
+        return update
+
+    # Diff current vs update per-criterion to detect what changed,
+    # then apply all changes to produce the merged plan.
+    # (Implementation depends on the shape of Plan.)
+    ...
+
+class MyState(TypedDict):
+    plan: Annotated[Plan | None, reduce_plan]
+```
+
+### Checklist before adding or modifying tools
+
+1. **List every state key** the tool's `Command(update={...})` can write.
+2. For each key, verify it has a reducer in the state definition.
+3. If it doesn't, **add a reducer before shipping the tool**. Not after. Not in a follow-up ticket. Before.
+4. Think about what the correct merge strategy is:
+   - **Merge**: the default assumption. If two tools each modify different parts of the same object, the reducer must combine both changes. This is the common case for structured state like plans, configs, or status objects.
+   - **Append/extend**: for list-valued keys like `messages` (LangGraph's `add_messages` reducer handles this).
+   - **Last-write-wins**: only acceptable when the key is written by exactly one tool, or when the key is a simple scalar where concurrent writes are genuinely idempotent. If you think you need last-write-wins for a structured object, you are almost certainly wrong — you need a merge.
+5. If two tools read-then-write the same key, a concurrent execution **will** lose one tool's changes unless the reducer merges. This is not hypothetical.
+
+### Keys that already have reducers
+
+- `messages`: uses LangGraph's built-in `add_messages` reducer — safe for concurrent tool calls that each append messages.
+
+## Task-related state belongs on `state`. Always.
+
+**If a field has anything to do with what the agent is working on, it goes on `state`. Not on `self`.**
+
+This is a near-absolute rule. Scratchpad, plan, breadcrumbs, accumulated findings, observed targets, decisions made, hypotheses formed, anything the agent reads or writes in the course of doing its work — all of that belongs on the langgraph state. Instance attributes are NOT a place for task-related state, even temporarily, even "just for working memory." Almost no feature related to a specific task is correctly modeled as an instance attribute.
+
+Instance attrs look tempting because they sidestep designing a reducer and skip the `Command(update={...})` plumbing. Don't take the bait. The cost shows up in three load-bearing ways:
+
+1. **Not in the checkpoint.** Langgraph persists `state` to its checkpointer, not the agent instance. Anything on `self._scratchpad` is lost the moment the agent instance is recreated — which happens more often than you'd expect: a parent tool body re-running on resume, an outer process restart, a graph re-invocation outside whatever instance cache you happened to put in front. State-based memory survives all of these because the checkpointer carries it.
+
+2. **Not visible to the status template via the natural path.** The base `_status` already passes `state` to the status template as a render var. State-based memory renders as `{% raw %}{% if state.plan %}...{% endif %}{% endraw %}` and you're done. Instance-based memory either requires an awkward `super()._status() + re-render extras` hack or a render-var injection that fights the framework.
+
+3. **Splits the mental model.** `state.actions`, `state.tokens`, `state.messages` all live on state. Putting _some_ task state on state and _some_ on instance attrs makes every reader carry a "where does this field live?" lookup. There's no good reason to take on that cost.
+
+The price you pay for going state-based is designing a reducer for any field tools can write. That's real work — `mark_done(A)` and `mark_done(B)` in the same batch each need to apply, so "last-write-wins" is wrong; you need a merge-by-identity. But it's a small amount of work for a meaningful structural win, and you have to design the reducer anyway the first time the LLM emits two tools-touching-same-key in one batch (which it will).
+
+### What instance attrs ARE for
+
+A narrow list. Instance attributes are reserved for **agent-instance plumbing that has nothing to do with the agent's reasoning**:
+
+- Caches keyed on instance identity: `_cached_system_prompt`, compiled tools.
+- Internal infrastructure counters not visible to the LLM: snapshot-filename suffixes, step-mode debug counters.
+- Concurrency primitives: `_page_lock`, async locks.
+- Construction-time injected dependencies that don't change across the run: `_target_provider`, `_token_values` (the secret store; literal values intentionally never enter the LLM payload), `_tracer`.
+
+If a field doesn't fit one of these patterns and the LLM might read it (directly or via the status template), it's task state and belongs on `state`. When in doubt, put it on `state`.
+
+

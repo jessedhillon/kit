@@ -23,17 +23,26 @@ dependencies = [
     "pydantic-settings~=2.7.0",
     "pygments~=2.18.0",
     "shortuuid~=1.0.13",
+    "sql-formatter~=0.6.2",
     "setuptools~=75.8.0",
     "types-Pygments==2.19.0.20250107",
+{% if include_llm_scaffold %}
+    "uuid-utils>=0.12,<1",
+{% else %}
     "uuid-utils~=0.10.0",
-    "uvicorn~=0.34.0",
+{% endif %}
+    "uvicorn[standard]~=0.34.0",
     "xdg-base-dirs~=6.0.0",
 {%- if include_llm_scaffold %}
     # LLM scaffold
-    "langchain~=0.3.0",
-    "langchain-openai~=0.2.0",
-    "langchain-anthropic~=0.3.0",
+    "langchain>=1.0,<2",
+    "langchain-openai>=1.0,<2",
+    "langchain-anthropic>=1.0,<2",
+    "langgraph>=1.1,<2",
     "jinja2~=3.1.0",
+{%- endif %}
+{%- if include_session_journal %}
+    "anthropic>=0.50,<1",
 {%- endif %}
 {%- if include_streaming %}
     # Streaming scaffold
@@ -94,6 +103,9 @@ filterwarnings = [
 [tool.pyright]
 exclude = [
   "{{ module_name }}/typings/",
+  "{{ module_name }}/core/container/vendor.py",
+  "{{ module_name }}/lib/sheets.py",
+  "scripts/render-agent-prompt.py",
   "**/node_modules/**",
   "**/.venv/**",
 ]
@@ -142,6 +154,18 @@ multi_line_output = 2  # HANGING_INDENT
 skip_glob = [
     "{{ module_name }}/typings/**/*.pyi"
 ]
+
+[tool.kit]
+module-name = "{{ module_name }}"
+
+[tool.kit.features]
+tunnels = {{ include_tunnels | lower }}
+
+[tool.kit.ports]
+postgresql = {{ postgresql_port }}
+process-compose = {{ process_compose_port }}
+memcached = {{ memcached_port }}
+rabbitmq = {{ rabbitmq_port }}
 
 [tool.poetry]
 name = "{{ project_name }}"

@@ -1,0 +1,501 @@
+"""Base agent class for async LangGraph agents.
+
+Provides a fixed graph topology with customizable extension points,
+modeled after the Socratic BaseAgent pattern (which itself descends from
+the archived {{ module_name }} one), built on async langgraph + langchain-core.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import re
+import typing as t
+
+from langchain_core.language_models import BaseChatModel
+from langchain_core.messages import trim_messages  # pyright: ignore[reportUnknownVariableType]
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, RemoveMessage, SystemMessage
+from langchain_core.runnables import RunnableConfig
+from langchain_core.tools import BaseTool
+from langgraph.graph import StateGraph
+from langgraph.prebuilt import ToolNode
+from langgraph.types import RetryPolicy
+
+from {{ module_name }}.core import di
+from {{ module_name }}.core.provider import LoggingProvider
+
+from .state import AgentState
+
+_DEFAULT_OBSERVER_PROMPT = """\
+You are an observation agent. Compress the conversation messages into concise, \
+prioritized observations. Output your observations between <observations> tags.
+
+Use priority levels:
+- High: Key decisions, user facts, goals, critical outcomes
+- Medium: Project details, tool results, context
+- Low: Minor details
+
+Rules:
+- Capture outcomes, not back-and-forth
+- Be specific and terse
+- Do not repeat observations already in existing-observations
+"""
+
+_OBSERVATIONS_RE = re.compile(
+    r"<observations>\s*(.*?)\s*</observations>",
+    re.DOTALL,
+)
+
+
+def format_messages_for_observer(messages: list[BaseMessage]) -> str:
+    """Format messages as text for the observer model."""
+    lines: list[str] = []
+    for m in messages:
+        role = type(m).__name__.replace("Message", "")
+        content = str(m.content)  # pyright: ignore[reportUnknownArgumentType]
+        if len(content) > 2000:
+            content = content[:2000] + "... (truncated)"
+        lines.append(f"[{role}]: {content}")
+    return "\n\n".join(lines)
+
+
+def parse_observations(content: str | list[str | dict[str, t.Any]]) -> str:
+    """Extract text between `<observations>` tags, or use full content."""
+    text = content if isinstance(content, str) else str(content)
+    match = _OBSERVATIONS_RE.search(text)
+    return match.group(1).strip() if match else text.strip()
+
+
+# Retry policy for the model-call node. LangGraph runs the entire
+# `_call_model` node body on each retry, sleeping the configured interval
+# between attempts. Tuned for typical LLM provider rate-limit + transient-
+# error patterns:
+#
+# - `max_attempts=6` — ~5min cumulative under steady throttling at default
+#   backoff_factor.
+# - `initial_interval=2.0`, `backoff_factor=2.0`, `max_interval=60.0`:
+#   standard exponential.
+# - `jitter=True` — avoid thundering-herd on concurrent agents.
+# - `retry_on` defaults to `langgraph.types.default_retry_on`, which covers
+#   `ConnectionError`, 5xx `HTTPStatusError`, and (via its "retry by default
+#   for anything not in the deny-list" fallback) `openai.RateLimitError`.
+#
+# Suboptimality accepted: LangGraph's retry doesn't honor the `Retry-After`
+# header. We previously hand-rolled a wrapper that did, plus a process-wide
+# decaying floor across calls — but owning custom retry surface area cost
+# more than the marginal improvement, so we delegate to LangGraph's
+# built-in policy and accept the loss.
+_MODEL_NODE_RETRY_POLICY = RetryPolicy(
+    max_attempts=6,
+    initial_interval=2.0,
+    max_interval=60.0,
+    backoff_factor=2.0,
+    jitter=True,
+)
+
+
+TState = t.TypeVar("TState", bound=AgentState)
+
+
+class ModelConfig(t.TypedDict, total=False):
+    """Model configuration parameters."""
+
+    temperature: float
+    max_tokens: int
+
+
+class ModelInfo(t.TypedDict):
+    """Extracted model metadata."""
+
+    provider: str
+    model_name: str
+    config: ModelConfig
+
+
+class BaseAgent(t.Generic[TState]):
+    """Base class for LangGraph-based agents.
+
+    Establishes a fixed graph topology::
+
+        start -> status -> observe -> model -> tool -> status -> ... -> end
+
+    Subclasses customize behavior by overriding extension points rather than
+    rewiring the graph:
+
+    - `system_prompt(state)` — static system message (required)
+    - `update_status(state)` — dynamic status rendered each turn
+    - `exit(state)` — termination predicate
+    - `tool_list(state)` — available tools
+    - `observe_threshold_tokens()` — token count triggering observation
+    - `max_history_tokens()` — send-window safety net
+
+    The model node constructs its input as::
+
+        [system_prompt] + [observations] + messages + [status]
+
+    This gives the LLM the static instructions, compressed memory from
+    prior phases, recent conversation history, and a fresh snapshot of
+    the current situation on every call.
+
+    Note: the default `_provide_model()` looks up `di.Provide["llm.dialogue_model"]`.
+    The LLM container that exposes that key is not wired into {{ class_prefix }}Container
+    yet; configure a model provider or override `_provide_model`. Subclasses can override `_provide_model()` to inject a
+    different model.
+    """
+
+    name: str | None = None
+    tools: dict[str, BaseTool]
+    _graph: StateGraph[TState]
+    model_node_retry_policy: t.ClassVar[RetryPolicy] = _MODEL_NODE_RETRY_POLICY
+
+    @property
+    def model(self) -> BaseChatModel:
+        """The model for this agent.
+
+        Delegates to `_provide_model()` which subclasses override to
+        change the DI key.
+        """
+        return self._provide_model()
+
+    @di.inject
+    def _provide_model(
+        self,
+        model: BaseChatModel = di.Provide["llm.dialogue_model"],
+    ) -> BaseChatModel:
+        """Return the chat model via DI.
+
+        Override in subclasses to inject a different model::
+
+            @di.inject
+            def _provide_model(self, model=di.Provide["llm.sync_navigator_model"]):
+                return model
+        """
+        return model
+
+    @property
+    def model_info(self) -> ModelInfo:
+        """Extract provider, model name, and config from the model.
+
+        Works with ChatOpenAI, ChatAnthropic, and other standard LangChain
+        models by inspecting their attributes.
+        """
+        model = self.model
+
+        llm_type: str = model._llm_type  # pyright: ignore[reportPrivateUsage]
+        provider = llm_type.replace("-chat", "")
+
+        model_name: str
+        if hasattr(model, "model_name"):
+            model_name = t.cast(str, model.model_name)  # pyright: ignore[reportAttributeAccessIssue]
+        elif hasattr(model, "model"):
+            model_name = t.cast(str, model.model)  # pyright: ignore[reportAttributeAccessIssue]
+        else:
+            model_name = llm_type
+
+        config = ModelConfig()
+        if hasattr(model, "temperature"):
+            temp = t.cast(float | None, model.temperature)  # pyright: ignore[reportAttributeAccessIssue]
+            if temp is not None:
+                config["temperature"] = temp
+        if hasattr(model, "max_tokens"):
+            max_tok = t.cast(int | None, model.max_tokens)  # pyright: ignore[reportAttributeAccessIssue]
+            if max_tok is not None:
+                config["max_tokens"] = max_tok
+
+        return ModelInfo(
+            provider=provider,
+            model_name=model_name,
+            config=config,
+        )
+
+    # Subclass override hook — set this when a subclass extends the
+    # parent's state with additional fields. The default-generic-args path
+    # below only resolves the immediate parameterization (`BaseAgent[X]`);
+    # subclasses inheriting from a non-generic intermediate (e.g.
+    # `ExplorerNavigatorAgent(NavigatorAgent)`) can't override the generic
+    # arg without making every intermediate class itself generic, so this
+    # class attribute is the smaller escape hatch. When set, takes
+    # precedence over the generic-args walk.
+    state_schema: t.ClassVar[type | None] = None
+
+    def __init__(
+        self,
+        *,
+        tools: t.Sequence[BaseTool] | None = None,
+    ):
+        self.tools: dict[str, BaseTool] = {tool.name: tool for tool in (tools or [])}
+
+        # Subclass-declared state_schema wins over the generic walk —
+        # needed for subclasses that add state fields without
+        # re-parameterizing every intermediate class.
+        resolved_schema: type | None = type(self).state_schema
+        if resolved_schema is None:
+            for base in getattr(type(self), "__orig_bases__", ()):
+                args = t.get_args(base)
+                if args and not isinstance(args[0], t.TypeVar):
+                    resolved_schema = args[0]
+                    break
+        if resolved_schema is None:
+            raise TypeError(
+                f"{type(self).__name__} must parameterize BaseAgent[TState] or set the `state_schema` class attribute"
+            )
+
+        self._graph = StateGraph(resolved_schema)
+        self._wire_graph()
+
+    def _node_name(self, name: str) -> str:
+        """Return a scoped node name, prefixed with the agent name if set."""
+        return f"{self.name}.{name}" if self.name else name
+
+    def _wire_graph(self):
+        """Build the fixed graph topology.
+
+        Every `add_node` call passes `input_schema=self._graph.state_schema`
+        explicitly. This pins the node's input projection to the graph's
+        configured state class — bypassing langgraph's annotation-based
+        schema inference, which would otherwise narrow each node's input
+        to the first-parameter annotation on the action method. That
+        inference is a feature for multi-shape graphs where different
+        nodes want different state projections; we don't use it, and an
+        inherited-then-overridden method whose annotation is the BASE
+        state class will silently drop subclass fields without this pin
+        (e.g. `ReporterState.manifest` disappears at a node whose body
+        was authored against `state: NavigatorState`). See
+        `{{ module_name }}/integration/navigator/CLAUDE.md` for the navigator-side
+        receipt of this trap.
+        """
+        nn = self._node_name
+        schema = self._graph.state_schema
+
+        self._graph.add_node(nn("start"), self._start, input_schema=schema)
+        self._graph.set_entry_point(nn("start"))
+
+        self._graph.add_node(nn("status"), self._status, input_schema=schema)
+        self._graph.add_edge(nn("start"), nn("status"))
+
+        self._graph.add_node(nn("observe"), self._observe, input_schema=schema)
+        self._graph.add_edge(nn("status"), nn("observe"))
+
+        self._graph.add_node(
+            nn("model"), self._call_model, input_schema=schema, retry_policy=self.model_node_retry_policy
+        )
+        self._graph.add_edge(nn("observe"), nn("model"))
+        self._graph.add_conditional_edges(nn("model"), self._post_model, [nn("status"), nn("tool"), nn("end")])
+
+        self._graph.add_node(nn("tool"), self._tool_node, input_schema=schema)
+        self._graph.add_conditional_edges(nn("tool"), self._should_exit, [nn("status"), nn("end")])
+
+        self._graph.add_node(nn("end"), self._end, input_schema=schema)
+        self._graph.set_finish_point(nn("end"))
+
+    def compile(self, **kwargs: t.Any) -> t.Any:
+        """Compile the graph for execution."""
+        return self._graph.compile(**kwargs)
+
+    # -- Extension points (override in subclasses) -------------------------
+
+    def system_prompt(self, state: TState) -> SystemMessage:
+        """Return the static system message for this agent.
+
+        Must be overridden by subclasses.
+        """
+        raise NotImplementedError
+
+    def model_call_kwargs(self, state: TState) -> dict[str, t.Any]:
+        """Return provider request kwargs for the next model call."""
+        return {}
+
+    def bind_tools_kwargs(self, state: TState) -> dict[str, t.Any]:
+        """Return provider kwargs used when binding tools for the next model call."""
+        return {}
+
+    def update_status(self, state: TState) -> dict[str, t.Any]:
+        """Return a state update dict with a fresh `status` message.
+
+        Called before every model invocation. Override to render a dynamic
+        status message that gives the model situational awareness.
+        """
+        return {}
+
+    def exit(self, state: TState) -> bool:
+        """Return True if the agent should terminate.
+
+        Checked after tool execution. If True, the agent stops without
+        calling the model again. Override to implement domain-specific
+        termination logic.
+        """
+        return state.completed
+
+    def before_work(self, state: TState) -> dict[str, t.Any] | t.Coroutine[t.Any, t.Any, dict[str, t.Any]]:
+        """Hook called at the start of graph execution.
+
+        Override to perform initialization or state augmentation.
+        May be sync (return dict) or async (return coroutine).
+        """
+        return {}
+
+    def after_work(self, state: TState) -> dict[str, t.Any]:
+        """Hook called at the end of graph execution.
+
+        Override to perform cleanup or result extraction.
+        """
+        return {}
+
+    def tool_list(self, state: TState | None = None) -> list[BaseTool]:
+        """Return the tools available to the model.
+
+        Override to dynamically adjust tools based on state.
+        """
+        return list(self.tools.values())
+
+    def max_history_tokens(self) -> int | None:
+        """Max tokens for the message history sent to the model.
+
+        Returns None to send all messages (default). Override in subclasses
+        to apply a sliding window via `trim_messages`.
+        """
+        return None
+
+    def observe_threshold_tokens(self) -> int | None:
+        """Token count that triggers automatic observation.
+
+        When the approximate token count of `state.messages` exceeds this
+        threshold, the observer compresses older messages into observations
+        and removes them from state. Returns None to disable (default).
+        """
+        return None
+
+    def observe_keep_recent(self) -> int:
+        """Number of recent messages to keep after observation."""
+        return 6
+
+    def observer_system_prompt(self) -> str | None:
+        """System prompt for the observer model.
+
+        Returns None to use the default generic prompt. Override to provide
+        a domain-specific observer prompt.
+        """
+        return None
+
+    # -- Internal graph nodes ----------------------------------------------
+
+    async def _start(self, state: TState) -> dict[str, t.Any]:
+        result = self.before_work(state)
+        if asyncio.iscoroutine(result):
+            return await result
+        return result
+
+    async def _status(self, state: TState) -> dict[str, t.Any]:
+        return self.update_status(state)
+
+    @di.inject
+    async def _observe(
+        self,
+        state: TState,
+        *,
+        logging: LoggingProvider = di.Provide["logging"],
+    ) -> dict[str, t.Any]:
+        """Compress older messages into observations when threshold is exceeded."""
+        threshold = self.observe_threshold_tokens()
+        if threshold is None:
+            return {}
+
+        token_count = sum(
+            len(str(m.content)) // 4  # pyright: ignore[reportUnknownArgumentType]
+            for m in state.messages
+        )
+        if token_count < threshold:
+            return {}
+
+        keep = self.observe_keep_recent()
+        to_compress = state.messages[:-keep] if len(state.messages) > keep else []
+        if not to_compress:
+            return {}
+
+        existing_obs: str = getattr(state, "observations", None) or ""
+        messages_text = format_messages_for_observer(to_compress)
+        prompt = self.observer_system_prompt() or _DEFAULT_OBSERVER_PROMPT
+
+        logger = logging.get_logger()
+        logger.info(
+            "observe: compressing messages",
+            extra={
+                "compressed": len(to_compress),
+                "approx_tokens": token_count,
+                "keep_recent": keep,
+            },
+        )
+
+        response = await self.model.ainvoke([
+            SystemMessage(content=prompt),
+            HumanMessage(
+                content=(
+                    f"<existing-observations>\n{existing_obs}\n</existing-observations>\n\n"
+                    f"<new-messages>\n{messages_text}\n</new-messages>"
+                ),
+            ),
+        ])
+
+        new_obs_text = parse_observations(response.content)  # pyright: ignore[reportUnknownArgumentType]
+        updated = f"{existing_obs}\n\n{new_obs_text}".strip() if existing_obs else new_obs_text
+
+        removals = [RemoveMessage(id=m.id) for m in to_compress if m.id]
+
+        return {"observations": updated, "messages": removals}
+
+    async def _call_model(self, state: TState, config: RunnableConfig) -> dict[str, t.Any]:
+        """Call the LLM with system prompt + observations + history + status."""
+        sendlist: list[BaseMessage] = [self.system_prompt(state)]
+
+        observations: str | None = getattr(state, "observations", None)
+        if observations:
+            sendlist.append(
+                SystemMessage(
+                    content=f"## Conversation Memory\n\n{observations}",
+                )
+            )
+
+        history: list[BaseMessage] = list(state.messages)
+        max_tokens = self.max_history_tokens()
+        if max_tokens is not None:
+            history = trim_messages(
+                history,
+                max_tokens=max_tokens,
+                token_counter="approximate",
+                strategy="last",
+                start_on="human",
+            )
+        sendlist.extend(history)
+
+        if state.status is not None:
+            sendlist.append(state.status)
+
+        tools = self.tool_list(state)
+        runnable = self.model.bind_tools(tools, **self.bind_tools_kwargs(state)) if tools else self.model
+        response = await runnable.ainvoke(sendlist, config=config, **self.model_call_kwargs(state))
+
+        return {"messages": [response]}
+
+    def _post_model(self, state: TState) -> str:
+        """Route after model: to tools if tool calls, else end the turn."""
+        last_ai = next(
+            (m for m in reversed(state.messages) if isinstance(m, AIMessage)),
+            None,
+        )
+        if last_ai is not None and last_ai.tool_calls:
+            return self._node_name("tool")
+        return self._node_name("end")
+
+    async def _tool_node(self, state: TState) -> dict[str, t.Any]:
+        """Execute pending tool calls."""
+        tools = self.tool_list(state)
+        node = ToolNode(tools, handle_tool_errors=True)
+        return await node.ainvoke(state)  # pyright: ignore[reportUnknownMemberType]
+
+    def _should_exit(self, state: TState) -> str:
+        """After tools: exit if done, otherwise loop back to status -> model."""
+        if self.exit(state):
+            return self._node_name("end")
+        return self._node_name("status")
+
+    async def _end(self, state: TState) -> dict[str, t.Any]:
+        return self.after_work(state)
