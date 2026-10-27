@@ -181,3 +181,44 @@ See the generated `CLAUDE.md` in each project for detailed architecture document
 ## License
 
 MIT
+
+## Infrastructure backports
+
+The Propel infrastructure deltas are tracked in [BACKPORTS.md](BACKPORTS.md).
+Generated projects now support `--secrets/--no-secrets`: normal boot validates
+secrets immediately, while credential-free roles can defer construction until a
+secret is actually accessed. Local and Test environments use file-based secrets.
+Optional `template`, `vendor`, and `web` settings may be omitted.
+
+Additional Copier switches (all off by default):
+
+- `include_llm_scaffold`: LangGraph agent/state skeleton, compatible LangChain 1.x
+  dependencies, and guidance on reducers and keeping working memory on state.
+  Override `_provide_model()` or supply your own `llm.dialogue_model` provider.
+- `include_session_journal`: Anthropic-backed session-journal extraction and a
+  PreCompact hook. Configure `secrets.anthropic.api_key` before enabling the hook;
+  set `JOURNAL_MODEL` to override its model. This option sends transcripts to the
+  configured model provider when the hook runs.
+- `include_tunnels`: `PROJECT-cli tunnel run NAME`, a typed Cloudflare tunnel
+  secrets map, and a disabled process-compose example. Tokens travel via
+  `TUNNEL_TOKEN`, never command-line arguments. Configure
+  `cloudflare.tunnels.NAME.{token,hostname}` in the encrypted vault.
+
+`tool.kit.module-name` and `tool.kit.ports` in the generated `pyproject.toml` let
+`nix-templates#dev-kit` select the same project identity and default service ports.
+Local environment overrides still win. Both Python and the devshell namespace
+vault keys as `PROJECT/local:secrets.vault.yaml`; `VAULT_KEY_PREFIX` can override
+that namespace consistently across worktrees. The Nix shell includes `cloudflared`
+only when the generated tunnel feature is enabled.
+
+Run the backport regression matrix with Copier, uv, and Python 3.13 available:
+
+```sh
+./tests/scripts/test-backports.sh
+```
+
+It renders minimal, example-free, and optional-feature projects, installs each into
+an isolated temporary environment, and tests runtime boot/configuration, IDs,
+optional dependencies, a fake-model agent graph, and a stubbed tunnel process.
+The update check uses temporary Git repositories and preserves a local fixture
+customization; it does not commit to this repository or modify another project.

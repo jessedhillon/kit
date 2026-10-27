@@ -8,3 +8,6 @@ dist/
 # Override global ignore of *.claude for the template scaffold
 !templates/.claude/
 !templates/.claude/**
+
+__pycache__/
+.pytest_cache/
